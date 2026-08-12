@@ -10,10 +10,7 @@
     container-type: normal;
 }
 
-/* ------------------------------------------------------------------------- */
-/* Invisible Compact / Default toggle edge                                   */
-/* ------------------------------------------------------------------------- */
-
+/* Invisible Compact / Default toggle edge. */
 .vc-cdm-toggle-edge {
     position: fixed;
     z-index: 1000000;
@@ -29,10 +26,7 @@
     background: color-mix(in srgb, var(--interactive-normal, #b5bac1) 18%, transparent);
 }
 
-/* ------------------------------------------------------------------------- */
-/* Compact state                                                             */
-/* ------------------------------------------------------------------------- */
-
+/* Compact state. */
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] {
     width: var(--vc-cdm-compact-width) !important;
     min-width: var(--vc-cdm-compact-width) !important;
@@ -58,7 +52,7 @@
     height: 0;
 }
 
-/* Current Discord search is a native button inside searchBar_ */
+/* Current Discord search is a native button inside searchBar_. */
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="searchBar_"] {
     display: flex !important;
     justify-content: center !important;
@@ -97,7 +91,7 @@
     display: none !important;
 }
 
-/* Keep Discord's native row heights and avatar/status geometry. Only narrow and center. */
+/* Preserve Discord's native avatar/status geometry; only narrow and center rows. */
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] {
     width: 48px !important;
     min-width: 48px !important;
@@ -137,7 +131,6 @@
     gap: 0 !important;
 }
 
-/* Only remove the text/detail column. Do not size avatar_, wrapper_, svg or img. */
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="layout_"] > [class*="content_"],
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="nameAndDecorators_"],
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="subtext_"],
@@ -153,16 +146,12 @@
     transform: none !important;
 }
 
-/* Discord adds a right-side name fade to DM links; it is unnecessary without names. */
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="channelNameFade_"] {
     -webkit-mask-image: none !important;
     mask-image: none !important;
 }
 
-/* ------------------------------------------------------------------------- */
-/* Compact account dock                                                      */
-/* ------------------------------------------------------------------------- */
-
+/* Compact account dock. */
 .vc-cdm-account-dock {
     position: absolute;
     z-index: 100000;
@@ -201,7 +190,7 @@
     width: 40px;
     height: 40px;
     padding: 2px;
-    border: 2px solid var(--vc-cdm-self-status, #b5bac1);
+    border: 2px solid var(--vc-cdm-self-status, var(--interactive-normal, #b5bac1));
     border-radius: 50%;
     overflow: hidden;
     background: transparent;
@@ -215,16 +204,21 @@
     pointer-events: none;
 }
 
+/* Match Discord's normal account-control palette instead of custom color mixes. */
 .vc-cdm-controls-button {
     width: 40px;
     height: 32px;
-    border: 1px solid color-mix(in srgb, var(--interactive-normal, #b5bac1) 16%, transparent);
     border-radius: 10px;
-    background: color-mix(in srgb, var(--interactive-normal, #b5bac1) 20%, transparent);
+    color: var(--interactive-normal, var(--text-normal));
+    background: var(--background-modifier-hover, rgba(255, 255, 255, .08));
 }
 
 .vc-cdm-control-action {
-    background: color-mix(in srgb, var(--interactive-normal, #b5bac1) 10%, transparent);
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    color: var(--interactive-normal, var(--text-normal));
+    background: transparent;
 }
 
 .vc-cdm-controls-button svg,
@@ -237,7 +231,13 @@
 .vc-cdm-controls-button:hover,
 .vc-cdm-control-action:hover {
     color: var(--interactive-hover, var(--header-primary));
-    background: color-mix(in srgb, var(--interactive-normal, #b5bac1) 30%, transparent);
+    background: var(--background-modifier-hover, rgba(255, 255, 255, .08));
+}
+
+.vc-cdm-profile-button:active,
+.vc-cdm-controls-button:active,
+.vc-cdm-control-action:active {
+    background: var(--background-modifier-active, rgba(255, 255, 255, .12));
 }
 
 .vc-cdm-profile-button:focus-visible,
@@ -257,6 +257,7 @@
     padding: 5px;
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, .10));
     border-radius: 11px;
+    color: var(--interactive-normal, var(--text-normal));
     background: var(--background-floating, #111214);
     box-shadow: var(--elevation-high, 0 8px 24px rgba(0, 0, 0, .4));
     opacity: 0;
@@ -271,17 +272,7 @@
     pointer-events: auto;
 }
 
-.vc-cdm-control-action {
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
-}
-
-/* ------------------------------------------------------------------------- */
-/* Default state                                                             */
-/* ------------------------------------------------------------------------- */
-
-/* Default mode deliberately does not restyle Discord's sidebar or account panel. */
+/* Default state deliberately does not restyle Discord's sidebar/account panel. */
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="true"] {
     width: auto;
     min-width: 0;
