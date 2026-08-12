@@ -23,9 +23,7 @@ let controlsOpen = false;
 let avatarSignature = "";
 let hiddenNativePanels: {
     element: HTMLElement;
-    opacity: string;
-    visibility: string;
-    pointerEvents: string;
+    display: string;
 } | null = null;
 
 function readStoredMode() {
@@ -56,10 +54,9 @@ function getNativePanels() {
 function restoreNativePanels() {
     if (!hiddenNativePanels) return;
 
-    const { element, opacity, visibility, pointerEvents } = hiddenNativePanels;
-    element.style.setProperty("opacity", opacity);
-    element.style.setProperty("visibility", visibility);
-    element.style.setProperty("pointer-events", pointerEvents);
+    const { element, display } = hiddenNativePanels;
+    if (display) element.style.setProperty("display", display);
+    else element.style.removeProperty("display");
     hiddenNativePanels = null;
 }
 
@@ -78,15 +75,11 @@ function syncNativePanelsVisibility() {
     if (!hiddenNativePanels) {
         hiddenNativePanels = {
             element: panels,
-            opacity: panels.style.getPropertyValue("opacity"),
-            visibility: panels.style.getPropertyValue("visibility"),
-            pointerEvents: panels.style.getPropertyValue("pointer-events")
+            display: panels.style.getPropertyValue("display")
         };
     }
 
-    panels.style.setProperty("opacity", "0", "important");
-    panels.style.setProperty("visibility", "hidden", "important");
-    panels.style.setProperty("pointer-events", "none", "important");
+    panels.style.setProperty("display", "none", "important");
 }
 
 function getNativeProfileButton() {
@@ -173,7 +166,10 @@ function setControlsOpen(open: boolean) {
     if (accountDock) accountDock.dataset.controlsOpen = String(controlsOpen);
     if (controlsMenu) controlsMenu.dataset.open = String(controlsOpen);
 
-    if (controlsOpen) syncControlsMenuPosition();
+    if (controlsOpen) {
+        refreshControlActions();
+        syncControlsMenuPosition();
+    }
 }
 
 function applyMode() {
@@ -262,26 +258,65 @@ function refreshProfileButton(profileButton: HTMLButtonElement) {
     }
 }
 
-const CONTROL_ICONS = {
-    mute: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-3.07A7 7 0 0 1 5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0Z"/></svg>',
-    deafen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 0 0-9 9v5a3 3 0 0 0 3 3h2a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H5a7 7 0 0 1 14 0h-3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2a3 3 0 0 0 3-3v-5a9 9 0 0 0-9-9Z"/></svg>',
-    settings: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.26 3.18 9.7 1h4.6l.44 2.18c.54.2 1.05.5 1.52.88l2.08-.72 2.3 3.98-1.65 1.47c.1.55.1 1.12 0 1.67l1.65 1.47-2.3 3.98-2.08-.72c-.47.38-.98.68-1.52.88L14.3 19h-4.6l-.44-2.18a7 7 0 0 1-1.52-.88l-2.08.72-2.3-3.98 1.65-1.47a7 7 0 0 1 0-1.67L3.36 8.07l2.3-3.98 2.08.72c.47-.38.98-.68 1.52-.88ZM12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/></svg>'
+type ControlKind = "mute" | "deafen" | "settings";
+
+const CONTROL_LABELS: Record<ControlKind, string[]> = {
+    mute: ["Mute", "Unmute"],
+    deafen: ["Deafen", "Undeafen"],
+    settings: ["User Settings"]
 };
 
-function createControlAction(type: keyof typeof CONTROL_ICONS, title: string, labels: string[]) {
+function cloneNativeControlVisual(nativeButton: HTMLButtonElement, target: HTMLButtonElement) {
+    const visual = nativeButton.querySelector<HTMLElement>("svg")
+        ?? nativeButton.firstElementChild as HTMLElement | null;
+
+    target.replaceChildren();
+
+    if (visual) {
+        const clone = visual.cloneNode(true) as HTMLElement;
+        clone.removeAttribute("class");
+        clone.classList.add("vc-cdm-native-control-icon");
+        clone.setAttribute("aria-hidden", "true");
+        target.appendChild(clone);
+    }
+
+    const style = getComputedStyle(nativeButton);
+    target.style.setProperty("color", style.color, "important");
+}
+
+function syncControlAction(button: HTMLButtonElement) {
+    const kind = button.dataset.controlKind as ControlKind | undefined;
+    if (!kind) return;
+
+    const nativeButton = getNativeControlButton(...CONTROL_LABELS[kind]);
+    if (!nativeButton) return;
+
+    const label = nativeButton.getAttribute("aria-label") ?? CONTROL_LABELS[kind][0];
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    cloneNativeControlVisual(nativeButton, button);
+}
+
+function refreshControlActions() {
+    if (!controlsMenu) return;
+
+    controlsMenu.querySelectorAll<HTMLButtonElement>(".vc-cdm-control-action").forEach(syncControlAction);
+}
+
+function createControlAction(kind: ControlKind) {
     const button = document.createElement("button");
     button.className = "vc-cdm-control-action";
     button.type = "button";
-    button.title = title;
-    button.setAttribute("aria-label", title);
-    button.innerHTML = CONTROL_ICONS[type];
+    button.dataset.controlKind = kind;
 
     button.addEventListener("click", event => {
         event.stopPropagation();
-        getNativeControlButton(...labels)?.click();
+        const nativeButton = getNativeControlButton(...CONTROL_LABELS[kind]);
+        nativeButton?.click();
         setControlsOpen(false);
     });
 
+    syncControlAction(button);
     return button;
 }
 
@@ -294,13 +329,14 @@ function createControlsMenu() {
     menu.setAttribute("role", "group");
     menu.setAttribute("aria-label", "Audio and settings controls");
     menu.append(
-        createControlAction("mute", "Mute / Unmute", ["Mute", "Unmute"]),
-        createControlAction("deafen", "Deafen / Undeafen", ["Deafen", "Undeafen"]),
-        createControlAction("settings", "User Settings", ["User Settings"])
+        createControlAction("mute"),
+        createControlAction("deafen"),
+        createControlAction("settings")
     );
 
     document.body.appendChild(menu);
     controlsMenu = menu;
+    refreshControlActions();
 }
 
 function createAccountDock() {
@@ -330,6 +366,9 @@ function createAccountDock() {
     controlsButton.setAttribute("aria-haspopup", "true");
     controlsButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 7h10.2a3 3 0 1 0 0-2H4a1 1 0 0 0 0 2Zm0 6h4.2a3 3 0 1 0 0-2H4a1 1 0 1 0 0 2Zm0 6h12.2a3 3 0 1 0 0-2H4a1 1 0 1 0 0 2Z"/></svg>';
 
+    const nativeSettings = getNativeControlButton("User Settings");
+    if (nativeSettings) controlsButton.style.setProperty("color", getComputedStyle(nativeSettings).color, "important");
+
     controlsButton.addEventListener("click", event => {
         event.preventDefault();
         event.stopPropagation();
@@ -357,7 +396,14 @@ function refreshDock() {
     const profileButton = accountDock.querySelector<HTMLButtonElement>(".vc-cdm-profile-button");
     if (profileButton) refreshProfileButton(profileButton);
 
+    const controlsButton = accountDock.querySelector<HTMLButtonElement>(".vc-cdm-controls-button");
+    const nativeSettings = getNativeControlButton("User Settings");
+    if (controlsButton && nativeSettings) {
+        controlsButton.style.setProperty("color", getComputedStyle(nativeSettings).color, "important");
+    }
+
     if (!controlsMenu?.isConnected) createControlsMenu();
+    if (controlsOpen) refreshControlActions();
     syncControlsMenuPosition();
 }
 
