@@ -7,36 +7,19 @@ import "./styles.css";
 import * as DataStore from "@api/DataStore";
 import definePlugin from "@utils/types";
 
-const MODE_KEY = "CompactDMBar_compactModeV3";
-const EXPANDED_WIDTH_KEY = "CompactDMBar_expandedWidth";
-
+const MODE_KEY = "CompactDMBar_compactModeV4";
 const COMPACT_WIDTH = 72;
-const DEFAULT_EXPANDED_WIDTH = 280;
-const COMPACT_TRIGGER = 190;
-const MAX_WIDTH = 480;
-
 const SIDEBAR_SELECTOR = '#app-mount [class*="sidebarList_"]:has([class*="privateChannels_"])';
 
 let observer: MutationObserver | null = null;
 let animationFrame = 0;
 let sidebar: HTMLElement | null = null;
-let floatingHandle: HTMLButtonElement | null = null;
+let toggleEdge: HTMLDivElement | null = null;
+let nativeResizeHandle: HTMLElement | null = null;
 let accountDock: HTMLDivElement | null = null;
 let compactMode = true;
-let lastExpandedWidth = DEFAULT_EXPANDED_WIDTH;
 let controlsOpen = false;
 let avatarSignature = "";
-let controlsSignature = "";
-let dragSession: {
-    pointerId: number;
-    startX: number;
-    startWidth: number;
-    moved: boolean;
-} | null = null;
-
-function clampExpandedWidth(width: number) {
-    return Math.min(MAX_WIDTH, Math.max(COMPACT_TRIGGER, Math.round(width)));
-}
 
 function getNativePanels() {
     if (!sidebar) return null;
@@ -47,23 +30,33 @@ function getNativePanels() {
         ?? null;
 }
 
-function getNativeAvatarButton() {
+function getNativeProfileButton() {
     const panels = getNativePanels();
     if (!panels) return null;
 
-    return panels.querySelector<HTMLElement>('[class*="avatarWrapper_"]')
+    return panels.querySelector<HTMLElement>('[role="button"][class*="accountPopoutButton_"]')
+        ?? panels.querySelector<HTMLElement>('[class*="avatarWrapper_"]')
         ?? panels.querySelector<HTMLElement>('[class*="accountPopoutButtonWrapper_"]')
         ?? null;
 }
 
-function getNativeControlButtons() {
+function getNativeControlButton(...labels: string[]) {
     const panels = getNativePanels();
-    if (!panels) return [];
+    if (!panels) return null;
 
-    const buttons = panels.querySelector<HTMLElement>('[class*="buttons_"]');
-    if (!buttons) return [];
+    const buttons = Array.from(panels.querySelectorAll<HTMLButtonElement>('[class*="buttons_"] button'));
+    return buttons.find(button => labels.includes(button.getAttribute("aria-label") ?? "")) ?? null;
+}
 
-    return Array.from(buttons.querySelectorAll<HTMLButtonElement>("button"));
+function getPresenceColor() {
+    const panels = getNativePanels();
+    const source = `${panels?.textContent ?? ""} ${panels?.innerHTML ?? ""}`.toLowerCase();
+
+    if (source.includes("do not disturb") || source.includes("dnd")) return "#ff6269";
+    if (source.includes("idle")) return "#ffd166";
+    if (source.includes("online")) return "#45d483";
+    if (source.includes("stream")) return "#a586ff";
+    return "#b5bac1";
 }
 
 function setControlsOpen(open: boolean) {
@@ -71,9 +64,8 @@ function setControlsOpen(open: boolean) {
     if (accountDock) accountDock.dataset.controlsOpen = String(open);
 }
 
-async function persistState() {
+async function persistMode() {
     await DataStore.set(MODE_KEY, compactMode);
-    await DataStore.set(EXPANDED_WIDTH_KEY, lastExpandedWidth);
 }
 
 function clearSidebarWidth() {
@@ -82,30 +74,7 @@ function clearSidebarWidth() {
     for (const property of ["width", "min-width", "max-width", "flex-basis"]) {
         sidebar.style.removeProperty(property);
     }
-}
-
-function forceSidebarWidth(width: number) {
-    if (!sidebar) return;
-
-    const value = `${Math.round(width)}px`;
-    sidebar.style.setProperty("width", value, "important");
-    sidebar.style.setProperty("min-width", value, "important");
-    sidebar.style.setProperty("max-width", value, "important");
-    sidebar.style.setProperty("flex-basis", value, "important");
-    sidebar.style.setProperty("--vc-compact-dm-width", value);
-}
-
-function syncHandlePosition() {
-    if (!sidebar || !floatingHandle) return;
-
-    const rect = sidebar.getBoundingClientRect();
-    floatingHandle.style.left = `${Math.round(rect.right - 10)}px`;
-    floatingHandle.style.top = `${Math.round(rect.top + rect.height / 2 - 17)}px`;
-    floatingHandle.dataset.compact = String(compactMode);
-    floatingHandle.setAttribute("aria-label", compactMode ? "Expand direct messages sidebar" : "Compact direct messages sidebar");
-    floatingHandle.title = compactMode
-        ? "Drag right or click to expand"
-        : "Drag left or click to compact";
+    sidebar.style.removeProperty("--vc-compact-dm-width");
 }
 
 function applyMode() {
@@ -115,127 +84,96 @@ function applyMode() {
     sidebar.dataset.vcCompactDmExpanded = String(!compactMode);
 
     if (compactMode) {
-        forceSidebarWidth(COMPACT_WIDTH);
+        const width = `${COMPACT_WIDTH}px`;
+        sidebar.style.setProperty("width", width, "important");
+        sidebar.style.setProperty("min-width", width, "important");
+        sidebar.style.setProperty("max-width", width, "important");
+        sidebar.style.setProperty("flex-basis", width, "important");
+        sidebar.style.setProperty("--vc-compact-dm-width", width);
     } else {
-        forceSidebarWidth(lastExpandedWidth);
-    }
-
-    syncHandlePosition();
-}
-
-function setCompact(compact: boolean, expandedWidth?: number) {
-    compactMode = compact;
-
-    if (!compact) {
-        if (typeof expandedWidth === "number" && Number.isFinite(expandedWidth)) {
-            lastExpandedWidth = clampExpandedWidth(expandedWidth);
-        }
-    } else {
+        clearSidebarWidth();
         setControlsOpen(false);
     }
 
-    applyMode();
+    if (accountDock) {
+        accountDock.style.setProperty("--vc-cdm-self-status", getPresenceColor());
+    }
+
+    syncToggleEdge();
 }
 
 function toggleMode() {
-    setCompact(!compactMode);
-    void persistState();
+    compactMode = !compactMode;
+    applyMode();
+    void persistMode();
 }
 
-function createFloatingHandle() {
-    floatingHandle?.remove();
+function syncNativeResizeHandle() {
+    if (!sidebar) return;
 
-    const handle = document.createElement("button");
-    handle.className = "vc-cdm-floating-handle";
-    handle.type = "button";
-    handle.innerHTML = `
-        <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true">
-            <path class="vc-cdm-handle-chevron vc-cdm-handle-chevron-left" fill="currentColor" d="M12.8 4.6 7.4 10l5.4 5.4 1.4-1.4-4-4 4-4-1.4-1.4Z"/>
-            <path class="vc-cdm-handle-chevron vc-cdm-handle-chevron-right" fill="currentColor" d="m7.2 4.6-1.4 1.4 4 4-4 4 1.4 1.4 5.4-5.4-5.4-5.4Z"/>
-        </svg>`;
+    const parent = sidebar.parentElement;
+    const next = parent?.querySelector<HTMLElement>(':scope > [class*="sidebarResizeHandle_"]')
+        ?? parent?.querySelector<HTMLElement>('[class*="sidebarResizeHandle_"]')
+        ?? null;
 
-    handle.addEventListener("pointerdown", event => {
-        if (event.button !== 0) return;
+    if (nativeResizeHandle && nativeResizeHandle !== next) {
+        nativeResizeHandle.style.removeProperty("pointer-events");
+        nativeResizeHandle.style.removeProperty("opacity");
+    }
 
+    nativeResizeHandle = next;
+    if (!nativeResizeHandle) return;
+
+    nativeResizeHandle.style.setProperty("pointer-events", "none", "important");
+    nativeResizeHandle.style.setProperty("opacity", "0", "important");
+}
+
+function syncToggleEdge() {
+    if (!sidebar || !toggleEdge) return;
+
+    const rect = sidebar.getBoundingClientRect();
+    toggleEdge.style.left = `${Math.round(rect.right - 4)}px`;
+    toggleEdge.style.top = `${Math.round(rect.top)}px`;
+    toggleEdge.style.height = `${Math.round(rect.height)}px`;
+}
+
+function createToggleEdge() {
+    toggleEdge?.remove();
+
+    const edge = document.createElement("div");
+    edge.className = "vc-cdm-toggle-edge";
+    edge.setAttribute("role", "separator");
+    edge.setAttribute("aria-label", "Toggle compact direct messages sidebar");
+    edge.setAttribute("aria-orientation", "vertical");
+    edge.tabIndex = 0;
+
+    edge.addEventListener("dblclick", event => {
         event.preventDefault();
         event.stopPropagation();
-
-        dragSession = {
-            pointerId: event.pointerId,
-            startX: event.clientX,
-            startWidth: compactMode ? COMPACT_WIDTH : lastExpandedWidth,
-            moved: false
-        };
-
-        handle.setPointerCapture?.(event.pointerId);
-        handle.dataset.dragging = "true";
-        document.body.classList.add("vc-cdm-resizing");
-    });
-
-    handle.addEventListener("click", event => {
-        event.preventDefault();
-        event.stopPropagation();
-
-        if (dragSession?.moved) return;
         toggleMode();
     });
 
-    handle.addEventListener("keydown", event => {
+    edge.addEventListener("keydown", event => {
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         toggleMode();
     });
 
-    document.body.appendChild(handle);
-    floatingHandle = handle;
-    syncHandlePosition();
-}
-
-function onWindowPointerMove(event: PointerEvent) {
-    if (!dragSession || event.pointerId !== dragSession.pointerId) return;
-
-    const delta = event.clientX - dragSession.startX;
-    if (Math.abs(delta) >= 3) dragSession.moved = true;
-
-    const desiredWidth = dragSession.startWidth + delta;
-
-    if (desiredWidth <= COMPACT_TRIGGER) {
-        setCompact(true);
-    } else {
-        setCompact(false, desiredWidth);
-    }
-}
-
-function finishDrag(event: PointerEvent) {
-    if (!dragSession || event.pointerId !== dragSession.pointerId) return;
-
-    floatingHandle?.releasePointerCapture?.(event.pointerId);
-    if (floatingHandle) delete floatingHandle.dataset.dragging;
-    document.body.classList.remove("vc-cdm-resizing");
-
-    const moved = dragSession.moved;
-    dragSession = null;
-
-    if (moved) void persistState();
-}
-
-function cloneNativeIcon(button: HTMLButtonElement) {
-    const icon = button.querySelector<SVGElement>("svg");
-    if (icon) return icon.cloneNode(true);
-
-    const fallback = document.createElement("span");
-    fallback.className = "vc-cdm-control-fallback";
-    fallback.textContent = "•";
-    return fallback;
+    document.body.appendChild(edge);
+    toggleEdge = edge;
+    syncToggleEdge();
 }
 
 function refreshProfileButton(profileButton: HTMLButtonElement) {
-    const nativeAvatarButton = getNativeAvatarButton();
-    if (!nativeAvatarButton) return;
+    const nativeProfileButton = getNativeProfileButton();
+    if (!nativeProfileButton) return;
 
-    const image = nativeAvatarButton.querySelector<HTMLImageElement>("img");
-    const signature = image?.src ?? nativeAvatarButton.innerHTML;
+    const image = nativeProfileButton.querySelector<HTMLImageElement>("img")
+        ?? getNativePanels()?.querySelector<HTMLImageElement>('[class*="avatarWrapper_"] img')
+        ?? getNativePanels()?.querySelector<HTMLImageElement>('[class*="accountPopoutButtonWrapper_"] img')
+        ?? null;
 
+    const signature = image?.src ?? "";
     if (signature === avatarSignature && profileButton.childElementCount) return;
     avatarSignature = signature;
 
@@ -248,52 +186,30 @@ function refreshProfileButton(profileButton: HTMLButtonElement) {
         clone.alt = "";
         clone.draggable = false;
         profileButton.appendChild(clone);
-    } else {
-        const visual = nativeAvatarButton.firstElementChild?.cloneNode(true);
-        if (visual) {
-            const wrapper = document.createElement("span");
-            wrapper.className = "vc-cdm-profile-clone";
-            wrapper.appendChild(visual);
-            profileButton.appendChild(wrapper);
-        }
     }
 }
 
-function refreshControlsMenu(menu: HTMLDivElement) {
-    const nativeButtons = getNativeControlButtons();
-    const signature = nativeButtons.map(button =>
-        `${button.getAttribute("aria-label") ?? ""}:${button.getAttribute("aria-pressed") ?? ""}:${button.innerHTML}`
-    ).join("|");
+const CONTROL_ICONS = {
+    mute: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-3.07A7 7 0 0 1 5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0Z"/></svg>',
+    deafen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 0 0-9 9v5a3 3 0 0 0 3 3h2a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H5a7 7 0 0 1 14 0h-3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2a3 3 0 0 0 3-3v-5a9 9 0 0 0-9-9Z"/></svg>',
+    settings: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.26 3.18 9.7 1h4.6l.44 2.18c.54.2 1.05.5 1.52.88l2.08-.72 2.3 3.98-1.65 1.47c.1.55.1 1.12 0 1.67l1.65 1.47-2.3 3.98-2.08-.72c-.47.38-.98.68-1.52.88L14.3 19h-4.6l-.44-2.18a7 7 0 0 1-1.52-.88l-2.08.72-2.3-3.98 1.65-1.47a7 7 0 0 1 0-1.67L3.36 8.07l2.3-3.98 2.08.72c.47-.38.98-.68 1.52-.88ZM12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/></svg>'
+};
 
-    if (signature === controlsSignature && menu.childElementCount) return;
-    controlsSignature = signature;
+function createControlAction(type: keyof typeof CONTROL_ICONS, title: string, labels: string[]) {
+    const button = document.createElement("button");
+    button.className = "vc-cdm-control-action";
+    button.type = "button";
+    button.title = title;
+    button.setAttribute("aria-label", title);
+    button.innerHTML = CONTROL_ICONS[type];
 
-    menu.replaceChildren();
+    button.addEventListener("click", event => {
+        event.stopPropagation();
+        getNativeControlButton(...labels)?.click();
+        setControlsOpen(false);
+    });
 
-    for (const nativeButton of nativeButtons) {
-        const proxy = document.createElement("button");
-        const label = nativeButton.getAttribute("aria-label")
-            ?? nativeButton.getAttribute("title")
-            ?? "Account control";
-
-        proxy.className = "vc-cdm-control-action";
-        proxy.type = "button";
-        proxy.setAttribute("aria-label", label);
-        proxy.title = label;
-        proxy.appendChild(cloneNativeIcon(nativeButton));
-
-        proxy.addEventListener("click", event => {
-            event.stopPropagation();
-            nativeButton.click();
-
-            window.setTimeout(() => {
-                controlsSignature = "";
-                refreshDock();
-            }, 0);
-        });
-
-        menu.appendChild(proxy);
-    }
+    return button;
 }
 
 function createAccountDock() {
@@ -304,15 +220,15 @@ function createAccountDock() {
     const dock = document.createElement("div");
     dock.className = "vc-cdm-account-dock";
     dock.dataset.controlsOpen = "false";
+    dock.style.setProperty("--vc-cdm-self-status", getPresenceColor());
 
     const profileButton = document.createElement("button");
     profileButton.className = "vc-cdm-profile-button";
     profileButton.type = "button";
     profileButton.setAttribute("aria-label", "Open profile");
-
     profileButton.addEventListener("click", event => {
         event.stopPropagation();
-        getNativeAvatarButton()?.click();
+        getNativeProfileButton()?.click();
         setControlsOpen(false);
     });
 
@@ -321,24 +237,21 @@ function createAccountDock() {
     controlsButton.type = "button";
     controlsButton.setAttribute("aria-label", "Audio and settings");
     controlsButton.setAttribute("aria-haspopup", "true");
-    controlsButton.innerHTML = `
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-            <path fill="currentColor" d="M4 7h10.2a3 3 0 1 0 0-2H4a1 1 0 0 0 0 2Zm0 6h4.2a3 3 0 1 0 0-2H4a1 1 0 1 0 0 2Zm0 6h12.2a3 3 0 1 0 0-2H4a1 1 0 1 0 0 2Z"/>
-        </svg>`;
+    controlsButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 7h10.2a3 3 0 1 0 0-2H4a1 1 0 0 0 0 2Zm0 6h4.2a3 3 0 1 0 0-2H4a1 1 0 1 0 0 2Zm0 6h12.2a3 3 0 1 0 0-2H4a1 1 0 1 0 0 2Z"/></svg>';
 
     const menu = document.createElement("div");
     menu.className = "vc-cdm-controls-menu";
     menu.setAttribute("role", "group");
     menu.setAttribute("aria-label", "Audio and settings controls");
+    menu.append(
+        createControlAction("mute", "Mute / Unmute", ["Mute", "Unmute"]),
+        createControlAction("deafen", "Deafen / Undeafen", ["Deafen", "Undeafen"]),
+        createControlAction("settings", "User Settings", ["User Settings"])
+    );
 
     controlsButton.addEventListener("click", event => {
         event.stopPropagation();
         setControlsOpen(!controlsOpen);
-
-        if (controlsOpen) {
-            controlsSignature = "";
-            refreshControlsMenu(menu);
-        }
     });
 
     dock.append(profileButton, controlsButton, menu);
@@ -346,36 +259,30 @@ function createAccountDock() {
 
     accountDock = dock;
     avatarSignature = "";
-    controlsSignature = "";
-
     refreshProfileButton(profileButton);
-    refreshControlsMenu(menu);
 }
 
 function refreshDock() {
-    if (!accountDock || !accountDock.isConnected) {
+    if (!accountDock?.isConnected) {
         createAccountDock();
         return;
     }
 
-    const profileButton = accountDock.querySelector<HTMLButtonElement>(".vc-cdm-profile-button");
-    const menu = accountDock.querySelector<HTMLDivElement>(".vc-cdm-controls-menu");
+    accountDock.style.setProperty("--vc-cdm-self-status", getPresenceColor());
 
+    const profileButton = accountDock.querySelector<HTMLButtonElement>(".vc-cdm-profile-button");
     if (profileButton) refreshProfileButton(profileButton);
-    if (menu && controlsOpen) refreshControlsMenu(menu);
 }
 
 function detachSidebar() {
     accountDock?.remove();
     accountDock = null;
     avatarSignature = "";
-    controlsSignature = "";
     controlsOpen = false;
 
     if (sidebar) {
         delete sidebar.dataset.vcCompactDmBar;
         delete sidebar.dataset.vcCompactDmExpanded;
-        sidebar.style.removeProperty("--vc-compact-dm-width");
         clearSidebarWidth();
     }
 
@@ -389,23 +296,24 @@ function refresh() {
 
     if (!nextSidebar) {
         if (sidebar) detachSidebar();
-        floatingHandle?.remove();
-        floatingHandle = null;
+        toggleEdge?.remove();
+        toggleEdge = null;
         return;
     }
 
     if (sidebar !== nextSidebar) {
         detachSidebar();
         sidebar = nextSidebar;
-        applyMode();
         createAccountDock();
-        if (!floatingHandle?.isConnected) createFloatingHandle();
-        return;
+        createToggleEdge();
     }
 
+    syncNativeResizeHandle();
     applyMode();
-    if (!floatingHandle?.isConnected) createFloatingHandle();
     refreshDock();
+
+    if (!toggleEdge?.isConnected) createToggleEdge();
+    syncToggleEdge();
 }
 
 function scheduleRefresh() {
@@ -416,30 +324,20 @@ function scheduleRefresh() {
 function onDocumentPointerDown(event: PointerEvent) {
     if (!controlsOpen || !accountDock) return;
     if (event.target instanceof Node && accountDock.contains(event.target)) return;
-
     setControlsOpen(false);
 }
 
 export default definePlugin({
     name: "CompactDMBar",
-    description: "Turns the Home/Friends direct-message sidebar into a compact, resizable icon-first rail.",
+    description: "Toggles the Home/Friends direct-message sidebar between Discord's default layout and a compact icon-only rail.",
     tags: ["Appearance", "Friends"],
     authors: [{ name: "itsmeares", id: 0n }],
 
     async start() {
         const storedMode = await DataStore.get<boolean>(MODE_KEY);
-        const storedExpandedWidth = await DataStore.get<number>(EXPANDED_WIDTH_KEY);
-
         compactMode = typeof storedMode === "boolean" ? storedMode : true;
 
-        if (typeof storedExpandedWidth === "number" && Number.isFinite(storedExpandedWidth)) {
-            lastExpandedWidth = clampExpandedWidth(storedExpandedWidth);
-        }
-
         document.addEventListener("pointerdown", onDocumentPointerDown, true);
-        window.addEventListener("pointermove", onWindowPointerMove, true);
-        window.addEventListener("pointerup", finishDrag, true);
-        window.addEventListener("pointercancel", finishDrag, true);
         window.addEventListener("resize", scheduleRefresh);
 
         observer = new MutationObserver(scheduleRefresh);
@@ -456,20 +354,22 @@ export default definePlugin({
         observer = null;
 
         document.removeEventListener("pointerdown", onDocumentPointerDown, true);
-        window.removeEventListener("pointermove", onWindowPointerMove, true);
-        window.removeEventListener("pointerup", finishDrag, true);
-        window.removeEventListener("pointercancel", finishDrag, true);
         window.removeEventListener("resize", scheduleRefresh);
-        document.body.classList.remove("vc-cdm-resizing");
 
         if (animationFrame) {
             cancelAnimationFrame(animationFrame);
             animationFrame = 0;
         }
 
-        floatingHandle?.remove();
-        floatingHandle = null;
-        dragSession = null;
+        toggleEdge?.remove();
+        toggleEdge = null;
+
+        if (nativeResizeHandle) {
+            nativeResizeHandle.style.removeProperty("pointer-events");
+            nativeResizeHandle.style.removeProperty("opacity");
+            nativeResizeHandle = null;
+        }
+
         detachSidebar();
     }
 });
