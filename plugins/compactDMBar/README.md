@@ -10,7 +10,8 @@ Compacts Discord's Home/Friends direct-message sidebar into a server-list-style 
 - the Direct Messages heading, row text/details, close buttons and scrollbar are hidden in compact mode;
 - the bottom account area becomes two compact controls: a profile/avatar button and an expandable audio/settings button that proxies Discord's native controls;
 - the right edge can be dragged between 72 px and 360 px;
-- crossing 144 px restores Discord's normal labels/layout and native account panel;
+- dragging below 200 px snaps directly to the 72 px compact rail instead of leaving a narrow text layout;
+- dragging back past 200 px restores Discord's normal labels/layout and native account panel;
 - double-clicking the resize handle toggles compact/last-expanded width;
 - the current width and last expanded width persist through Vencord's DataStore;
 - keyboard users can focus the resize handle and use Left/Right, Home/End, or Enter/Space.
