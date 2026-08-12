@@ -11,15 +11,23 @@ const MODE_KEY = "CompactDMBar_compactModeV4";
 const COMPACT_WIDTH = 72;
 const SIDEBAR_SELECTOR = '#app-mount [class*="sidebarList_"]:has([class*="privateChannels_"])';
 
+let running = false;
 let observer: MutationObserver | null = null;
 let animationFrame = 0;
 let sidebar: HTMLElement | null = null;
 let toggleEdge: HTMLDivElement | null = null;
 let nativeResizeHandle: HTMLElement | null = null;
 let accountDock: HTMLDivElement | null = null;
+let controlsMenu: HTMLDivElement | null = null;
 let compactMode = true;
 let controlsOpen = false;
 let avatarSignature = "";
+let hiddenNativePanels: {
+    element: HTMLElement;
+    opacity: string;
+    visibility: string;
+    pointerEvents: string;
+} | null = null;
 
 function getNativePanels() {
     if (!sidebar) return null;
@@ -28,6 +36,42 @@ function getNativePanels() {
     return parent?.querySelector<HTMLElement>(':scope > [class*="panels_"]')
         ?? parent?.querySelector<HTMLElement>('[class*="panels_"]')
         ?? null;
+}
+
+function restoreNativePanels() {
+    if (!hiddenNativePanels) return;
+
+    const { element, opacity, visibility, pointerEvents } = hiddenNativePanels;
+    element.style.setProperty("opacity", opacity);
+    element.style.setProperty("visibility", visibility);
+    element.style.setProperty("pointer-events", pointerEvents);
+    hiddenNativePanels = null;
+}
+
+function syncNativePanelsVisibility() {
+    const panels = getNativePanels();
+
+    if (hiddenNativePanels && hiddenNativePanels.element !== panels) {
+        restoreNativePanels();
+    }
+
+    if (!panels || !compactMode) {
+        restoreNativePanels();
+        return;
+    }
+
+    if (!hiddenNativePanels) {
+        hiddenNativePanels = {
+            element: panels,
+            opacity: panels.style.getPropertyValue("opacity"),
+            visibility: panels.style.getPropertyValue("visibility"),
+            pointerEvents: panels.style.getPropertyValue("pointer-events")
+        };
+    }
+
+    panels.style.setProperty("opacity", "0", "important");
+    panels.style.setProperty("visibility", "hidden", "important");
+    panels.style.setProperty("pointer-events", "none", "important");
 }
 
 function getNativeProfileButton() {
@@ -59,13 +103,30 @@ function getPresenceColor() {
     return "#b5bac1";
 }
 
-function setControlsOpen(open: boolean) {
-    controlsOpen = open;
-    if (accountDock) accountDock.dataset.controlsOpen = String(open);
+function syncControlsMenuPosition() {
+    if (!controlsMenu || !accountDock || !controlsOpen) return;
+
+    const trigger = accountDock.querySelector<HTMLElement>(".vc-cdm-controls-button");
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    controlsMenu.style.left = `${Math.round(rect.right + 8)}px`;
+    controlsMenu.style.bottom = `${Math.round(window.innerHeight - rect.bottom)}px`;
 }
 
-async function persistMode() {
-    await DataStore.set(MODE_KEY, compactMode);
+function setControlsOpen(open: boolean) {
+    controlsOpen = open && compactMode;
+
+    if (accountDock) accountDock.dataset.controlsOpen = String(controlsOpen);
+    if (controlsMenu) controlsMenu.dataset.open = String(controlsOpen);
+
+    if (controlsOpen) syncControlsMenuPosition();
+}
+
+function persistMode() {
+    void DataStore.set(MODE_KEY, compactMode).catch(error => {
+        console.warn("[CompactDMBar] Failed to persist compact mode", error);
+    });
 }
 
 function clearSidebarWidth() {
@@ -95,17 +156,20 @@ function applyMode() {
         setControlsOpen(false);
     }
 
+    syncNativePanelsVisibility();
+
     if (accountDock) {
         accountDock.style.setProperty("--vc-cdm-self-status", getPresenceColor());
     }
 
     syncToggleEdge();
+    syncControlsMenuPosition();
 }
 
 function toggleMode() {
     compactMode = !compactMode;
     applyMode();
-    void persistMode();
+    persistMode();
 }
 
 function syncNativeResizeHandle() {
@@ -212,6 +276,24 @@ function createControlAction(type: keyof typeof CONTROL_ICONS, title: string, la
     return button;
 }
 
+function createControlsMenu() {
+    controlsMenu?.remove();
+
+    const menu = document.createElement("div");
+    menu.className = "vc-cdm-controls-menu";
+    menu.dataset.open = "false";
+    menu.setAttribute("role", "group");
+    menu.setAttribute("aria-label", "Audio and settings controls");
+    menu.append(
+        createControlAction("mute", "Mute / Unmute", ["Mute", "Unmute"]),
+        createControlAction("deafen", "Deafen / Undeafen", ["Deafen", "Undeafen"]),
+        createControlAction("settings", "User Settings", ["User Settings"])
+    );
+
+    document.body.appendChild(menu);
+    controlsMenu = menu;
+}
+
 function createAccountDock() {
     if (!sidebar) return;
 
@@ -239,27 +321,20 @@ function createAccountDock() {
     controlsButton.setAttribute("aria-haspopup", "true");
     controlsButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 7h10.2a3 3 0 1 0 0-2H4a1 1 0 0 0 0 2Zm0 6h4.2a3 3 0 1 0 0-2H4a1 1 0 1 0 0 2Zm0 6h12.2a3 3 0 1 0 0-2H4a1 1 0 1 0 0 2Z"/></svg>';
 
-    const menu = document.createElement("div");
-    menu.className = "vc-cdm-controls-menu";
-    menu.setAttribute("role", "group");
-    menu.setAttribute("aria-label", "Audio and settings controls");
-    menu.append(
-        createControlAction("mute", "Mute / Unmute", ["Mute", "Unmute"]),
-        createControlAction("deafen", "Deafen / Undeafen", ["Deafen", "Undeafen"]),
-        createControlAction("settings", "User Settings", ["User Settings"])
-    );
-
     controlsButton.addEventListener("click", event => {
+        event.preventDefault();
         event.stopPropagation();
         setControlsOpen(!controlsOpen);
     });
 
-    dock.append(profileButton, controlsButton, menu);
+    dock.append(profileButton, controlsButton);
     sidebar.appendChild(dock);
 
     accountDock = dock;
     avatarSignature = "";
     refreshProfileButton(profileButton);
+
+    if (!controlsMenu?.isConnected) createControlsMenu();
 }
 
 function refreshDock() {
@@ -272,13 +347,20 @@ function refreshDock() {
 
     const profileButton = accountDock.querySelector<HTMLButtonElement>(".vc-cdm-profile-button");
     if (profileButton) refreshProfileButton(profileButton);
+
+    if (!controlsMenu?.isConnected) createControlsMenu();
+    syncControlsMenuPosition();
 }
 
 function detachSidebar() {
+    setControlsOpen(false);
+
     accountDock?.remove();
     accountDock = null;
+    controlsMenu?.remove();
+    controlsMenu = null;
     avatarSignature = "";
-    controlsOpen = false;
+    restoreNativePanels();
 
     if (sidebar) {
         delete sidebar.dataset.vcCompactDmBar;
@@ -291,6 +373,7 @@ function detachSidebar() {
 
 function refresh() {
     animationFrame = 0;
+    if (!running) return;
 
     const nextSidebar = document.querySelector<HTMLElement>(SIDEBAR_SELECTOR);
 
@@ -314,16 +397,18 @@ function refresh() {
 
     if (!toggleEdge?.isConnected) createToggleEdge();
     syncToggleEdge();
+    syncControlsMenuPosition();
 }
 
 function scheduleRefresh() {
-    if (animationFrame) return;
+    if (!running || animationFrame) return;
     animationFrame = requestAnimationFrame(refresh);
 }
 
 function onDocumentPointerDown(event: PointerEvent) {
-    if (!controlsOpen || !accountDock) return;
-    if (event.target instanceof Node && accountDock.contains(event.target)) return;
+    if (!controlsOpen) return;
+    if (!(event.target instanceof Node)) return;
+    if (accountDock?.contains(event.target) || controlsMenu?.contains(event.target)) return;
     setControlsOpen(false);
 }
 
@@ -333,9 +418,9 @@ export default definePlugin({
     tags: ["Appearance", "Friends"],
     authors: [{ name: "itsmeares", id: 0n }],
 
-    async start() {
-        const storedMode = await DataStore.get<boolean>(MODE_KEY);
-        compactMode = typeof storedMode === "boolean" ? storedMode : true;
+    start() {
+        running = true;
+        compactMode = true;
 
         document.addEventListener("pointerdown", onDocumentPointerDown, true);
         window.addEventListener("resize", scheduleRefresh);
@@ -346,10 +431,22 @@ export default definePlugin({
             subtree: true
         });
 
+        // Initialise the runtime immediately. Vencord's plugin manager does not
+        // await promises returned by start(), so DataStore must not gate setup.
         scheduleRefresh();
+
+        void DataStore.get<boolean>(MODE_KEY).then(storedMode => {
+            if (!running) return;
+            if (typeof storedMode === "boolean") compactMode = storedMode;
+            scheduleRefresh();
+        }).catch(error => {
+            console.warn("[CompactDMBar] Failed to restore compact mode", error);
+        });
     },
 
     stop() {
+        running = false;
+
         observer?.disconnect();
         observer = null;
 
