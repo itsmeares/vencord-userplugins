@@ -12,7 +12,7 @@ const EXPANDED_WIDTH_KEY = "CompactDMBar_expandedWidth";
 
 const COMPACT_WIDTH = 72;
 const DEFAULT_EXPANDED_WIDTH = 240;
-const EXPANDED_THRESHOLD = 144;
+const EXPANDED_THRESHOLD = 200;
 const MAX_WIDTH = 360;
 const WIDTH_STEP = 16;
 
@@ -90,6 +90,16 @@ function applyWidth(width: number, rememberExpanded = true) {
     sidebar.dataset.vcCompactDmExpanded = String(isExpanded());
 }
 
+function applyDraggedWidth(width: number) {
+    const nextWidth = clampWidth(width);
+
+    if (nextWidth < EXPANDED_THRESHOLD) {
+        applyWidth(COMPACT_WIDTH, false);
+    } else {
+        applyWidth(nextWidth);
+    }
+}
+
 function toggleWidth() {
     if (isExpanded()) {
         applyWidth(COMPACT_WIDTH, false);
@@ -110,6 +120,7 @@ function createResizeHandle() {
     handle.setAttribute("role", "separator");
     handle.setAttribute("aria-label", "Resize direct messages sidebar");
     handle.setAttribute("aria-orientation", "vertical");
+    handle.title = "Drag to resize. Double-click to toggle compact mode.";
     handle.tabIndex = 0;
 
     const grip = document.createElement("div");
@@ -135,12 +146,12 @@ function createResizeHandle() {
                 break;
             case "ArrowLeft":
                 event.preventDefault();
-                applyWidth(currentWidth - WIDTH_STEP);
+                applyDraggedWidth(currentWidth - WIDTH_STEP);
                 void persistWidth();
                 break;
             case "ArrowRight":
                 event.preventDefault();
-                applyWidth(currentWidth + WIDTH_STEP);
+                applyDraggedWidth(currentWidth + WIDTH_STEP);
                 void persistWidth();
                 break;
             case "Home":
@@ -170,7 +181,7 @@ function createResizeHandle() {
 
         const onMove = (moveEvent: PointerEvent) => {
             if (moveEvent.pointerId !== event.pointerId) return;
-            applyWidth(startWidth + moveEvent.clientX - startX);
+            applyDraggedWidth(startWidth + moveEvent.clientX - startX);
         };
 
         const finish = (upEvent: PointerEvent) => {
@@ -413,7 +424,11 @@ export default definePlugin({
 
         if (typeof storedWidth === "number" && Number.isFinite(storedWidth)) {
             currentWidth = clampWidth(storedWidth);
-            if (isExpanded(currentWidth)) lastExpandedWidth = currentWidth;
+            if (isExpanded(currentWidth)) {
+                lastExpandedWidth = currentWidth;
+            } else {
+                currentWidth = COMPACT_WIDTH;
+            }
         }
 
         document.addEventListener("pointerdown", onDocumentPointerDown, true);
