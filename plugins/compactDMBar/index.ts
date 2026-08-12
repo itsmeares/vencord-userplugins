@@ -12,9 +12,10 @@ const EXPANDED_WIDTH_KEY = "CompactDMBar_expandedWidth";
 
 const COMPACT_WIDTH = 72;
 const DEFAULT_EXPANDED_WIDTH = 240;
-const EXPANDED_THRESHOLD = 200;
+const EXPANDED_THRESHOLD = 180;
 const MAX_WIDTH = 360;
 const WIDTH_STEP = 16;
+const DRAG_SLOP = 4;
 
 const SIDEBAR_SELECTOR = '#app-mount [class*="sidebarList_"]:has([class*="privateChannels_"])';
 
@@ -86,7 +87,13 @@ function applyWidth(width: number, rememberExpanded = true) {
 
     if (!sidebar) return;
 
-    sidebar.style.setProperty("--vc-compact-dm-width", `${currentWidth}px`);
+    const cssWidth = `${currentWidth}px`;
+
+    sidebar.style.setProperty("--vc-compact-dm-width", cssWidth);
+    sidebar.style.setProperty("width", cssWidth, "important");
+    sidebar.style.setProperty("min-width", cssWidth, "important");
+    sidebar.style.setProperty("max-width", cssWidth, "important");
+    sidebar.style.setProperty("flex", `0 0 ${cssWidth}`, "important");
     sidebar.dataset.vcCompactDmExpanded = String(isExpanded());
 }
 
@@ -97,6 +104,16 @@ function applyDraggedWidth(width: number) {
         applyWidth(COMPACT_WIDTH, false);
     } else {
         applyWidth(nextWidth);
+    }
+}
+
+function applyPointerWidth(clientX: number, sidebarLeft: number) {
+    const requestedWidth = clientX - sidebarLeft;
+
+    if (requestedWidth < EXPANDED_THRESHOLD) {
+        applyWidth(COMPACT_WIDTH, false);
+    } else {
+        applyWidth(requestedWidth);
     }
 }
 
@@ -120,7 +137,7 @@ function createResizeHandle() {
     handle.setAttribute("role", "separator");
     handle.setAttribute("aria-label", "Resize direct messages sidebar");
     handle.setAttribute("aria-orientation", "vertical");
-    handle.title = "Drag to resize. Double-click to toggle compact mode.";
+    handle.title = "Drag to resize. Click to toggle compact mode.";
     handle.tabIndex = 0;
 
     const grip = document.createElement("div");
@@ -131,11 +148,6 @@ function createResizeHandle() {
             <path fill="currentColor" d="M7.8 4.6 2.4 10l5.4 5.4 1.4-1.4L5.2 10l4-4-1.4-1.4Zm4.4 0L10.8 6l4 4-4 4 1.4 1.4 5.4-5.4-5.4-5.4Z"/>
         </svg>`;
     handle.appendChild(grip);
-
-    handle.addEventListener("dblclick", event => {
-        event.preventDefault();
-        toggleWidth();
-    });
 
     handle.addEventListener("keydown", event => {
         switch (event.key) {
@@ -168,36 +180,50 @@ function createResizeHandle() {
     });
 
     handle.addEventListener("pointerdown", event => {
-        if (event.button !== 0) return;
+        if (event.button !== 0 || !sidebar) return;
 
         event.preventDefault();
+        event.stopPropagation();
 
+        const pointerId = event.pointerId;
         const startX = event.clientX;
-        const startWidth = currentWidth;
+        const sidebarLeft = sidebar.getBoundingClientRect().left;
+        let dragged = false;
 
-        handle.setPointerCapture(event.pointerId);
         handle.dataset.dragging = "true";
         document.body.classList.add("vc-cdm-resizing");
 
         const onMove = (moveEvent: PointerEvent) => {
-            if (moveEvent.pointerId !== event.pointerId) return;
-            applyDraggedWidth(startWidth + moveEvent.clientX - startX);
+            if (moveEvent.pointerId !== pointerId) return;
+
+            if (Math.abs(moveEvent.clientX - startX) >= DRAG_SLOP) {
+                dragged = true;
+            }
+
+            if (!dragged) return;
+            applyPointerWidth(moveEvent.clientX, sidebarLeft);
         };
 
         const finish = (upEvent: PointerEvent) => {
-            if (upEvent.pointerId !== event.pointerId) return;
+            if (upEvent.pointerId !== pointerId) return;
 
-            handle.removeEventListener("pointermove", onMove);
-            handle.removeEventListener("pointerup", finish);
-            handle.removeEventListener("pointercancel", finish);
+            window.removeEventListener("pointermove", onMove, true);
+            window.removeEventListener("pointerup", finish, true);
+            window.removeEventListener("pointercancel", finish, true);
             delete handle.dataset.dragging;
             document.body.classList.remove("vc-cdm-resizing");
+
+            if (upEvent.type !== "pointercancel" && !dragged) {
+                toggleWidth();
+                return;
+            }
+
             void persistWidth();
         };
 
-        handle.addEventListener("pointermove", onMove);
-        handle.addEventListener("pointerup", finish);
-        handle.addEventListener("pointercancel", finish);
+        window.addEventListener("pointermove", onMove, true);
+        window.addEventListener("pointerup", finish, true);
+        window.addEventListener("pointercancel", finish, true);
     });
 
     sidebar.appendChild(handle);
@@ -364,6 +390,10 @@ function detachSidebar() {
         delete sidebar.dataset.vcCompactDmBar;
         delete sidebar.dataset.vcCompactDmExpanded;
         sidebar.style.removeProperty("--vc-compact-dm-width");
+        sidebar.style.removeProperty("width");
+        sidebar.style.removeProperty("min-width");
+        sidebar.style.removeProperty("max-width");
+        sidebar.style.removeProperty("flex");
     }
 
     sidebar = null;
