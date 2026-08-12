@@ -27,7 +27,8 @@ if (-not (Test-Path $PluginsRoot)) {
 New-Item -ItemType Directory -Force -Path $UserPluginsRoot | Out-Null
 
 $PluginDirs = Get-ChildItem -Path $PluginsRoot -Directory | Where-Object {
-    Test-Path (Join-Path $_.FullName "index.ts") -or Test-Path (Join-Path $_.FullName "index.tsx")
+    (Test-Path (Join-Path $_.FullName "index.ts")) -or
+    (Test-Path (Join-Path $_.FullName "index.tsx"))
 }
 
 if (-not $PluginDirs) {
