@@ -1,0 +1,54 @@
+name: Validate userplugins
+
+on:
+    push:
+        branches:
+            - main
+            - "feat/**"
+    pull_request:
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout userplugins
+              uses: actions/checkout@v7
+              with:
+                  path: userplugins
+
+            - name: Checkout Vencord
+              uses: actions/checkout@v7
+              with:
+                  repository: Vendicated/Vencord
+                  path: Vencord
+
+            - name: Install pnpm
+              uses: pnpm/action-setup@v6
+              with:
+                  version: 11.9.0
+
+            - name: Use Node.js 24
+              uses: actions/setup-node@v6
+              with:
+                  node-version: 24
+                  cache: pnpm
+                  cache-dependency-path: Vencord/pnpm-lock.yaml
+
+            - name: Link userplugins
+              shell: bash
+              run: |
+                  mkdir -p Vencord/src/userplugins
+                  for plugin in userplugins/plugins/*; do
+                      [ -d "$plugin" ] || continue
+                      [ -f "$plugin/index.ts" ] || [ -f "$plugin/index.tsx" ] || continue
+                      ln -s "$GITHUB_WORKSPACE/$plugin" "Vencord/src/userplugins/$(basename "$plugin")"
+                  done
+
+            - name: Install Vencord dependencies
+              working-directory: Vencord
+              run: pnpm install --frozen-lockfile
+
+            - name: Build Vencord with userplugins
+              working-directory: Vencord
+              run: pnpm build --standalone
