@@ -218,6 +218,7 @@
     height: 32px;
     border-radius: 10px;
     background: var(--background-mod-subtle, rgba(255, 255, 255, .06));
+    transform: translateY(-3px);
 }
 
 .vc-cdm-controls-button:hover,
