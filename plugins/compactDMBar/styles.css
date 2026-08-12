@@ -1,0 +1,92 @@
+/* Compact only the Home/Friends sidebar. Guild channel sidebars are intentionally untouched. */
+:root {
+    --vc-compact-dm-bar-width: 64px;
+    --vc-compact-dm-item-size: 48px;
+}
+
+#app-mount [class*="sidebarList_"]:has([class*="privateChannels_"]) {
+    width: var(--vc-compact-dm-bar-width) !important;
+    min-width: var(--vc-compact-dm-bar-width) !important;
+    max-width: var(--vc-compact-dm-bar-width) !important;
+    container-type: normal;
+}
+
+/* The resize handle no longer makes sense while the DM rail has a fixed compact width. */
+#app-mount [class*="sidebarList_"]:has([class*="privateChannels_"]) + [class*="sidebarResizeHandle_"] {
+    display: none;
+}
+
+/* Search becomes a square icon button. Its native search icon is preserved. */
+#app-mount [class*="privateChannels_"] [class*="searchBar_"] {
+    width: 100%;
+    padding: 0 8px;
+    box-sizing: border-box;
+}
+
+#app-mount [class*="privateChannels_"] [class*="searchBarComponent_"] {
+    width: var(--vc-compact-dm-item-size);
+    min-width: var(--vc-compact-dm-item-size);
+    height: 40px;
+    padding: 0 !important;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0;
+}
+
+/* Remove the Direct Messages heading/+ row; the avatar rail starts immediately below navigation. */
+#app-mount [class*="privateChannels_"] [class*="privateChannelsHeaderContainer_"] {
+    display: none;
+}
+
+/* Friends, Message Requests, Nitro/Shop/Quests and DM rows all share the same compact footprint. */
+#app-mount [class*="privateChannels_"] [class*="channel_"] {
+    width: var(--vc-compact-dm-item-size);
+    max-width: var(--vc-compact-dm-item-size);
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#app-mount [class*="privateChannels_"] [class*="channel_"] [class*="interactive_"] {
+    width: var(--vc-compact-dm-item-size);
+    max-width: var(--vc-compact-dm-item-size);
+}
+
+#app-mount [class*="privateChannels_"] [class*="channel_"] [class*="layout_"] {
+    width: var(--vc-compact-dm-item-size);
+    min-width: var(--vc-compact-dm-item-size);
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    justify-content: center;
+}
+
+/* Keep the native avatar/navigation icon, but remove the text/decorator column. */
+#app-mount [class*="privateChannels_"] [class*="channel_"] [class*="layout_"] > [class*="content_"] {
+    display: none !important;
+}
+
+#app-mount [class*="privateChannels_"] [class*="channel_"] [class*="avatar_"] {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+#app-mount [class*="privateChannels_"] [class*="channel_"] [class*="linkButtonIcon_"] {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+/* A close-X consumes most of a compact row; DM context menus still provide channel actions. */
+#app-mount [class*="privateChannels_"] [class*="closeButton_"] {
+    display: none !important;
+}
+
+/* Do not spend rail width on a visible scrollbar. */
+#app-mount [class*="privateChannels_"] [class*="scroller_"] {
+    scrollbar-width: none;
+}
+
+#app-mount [class*="privateChannels_"] [class*="scroller_"]::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
