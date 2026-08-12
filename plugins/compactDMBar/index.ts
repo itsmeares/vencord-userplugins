@@ -266,6 +266,11 @@ const CONTROL_LABELS: Record<ControlKind, string[]> = {
     settings: ["User Settings"]
 };
 
+function getNeutralControlColor() {
+    const settingsButton = getNativeControlButton("User Settings");
+    return settingsButton ? getComputedStyle(settingsButton).color : null;
+}
+
 function cloneNativeControlVisual(nativeButton: HTMLButtonElement, target: HTMLButtonElement) {
     const visual = nativeButton.querySelector<HTMLElement>("svg")
         ?? nativeButton.firstElementChild as HTMLElement | null;
@@ -280,8 +285,9 @@ function cloneNativeControlVisual(nativeButton: HTMLButtonElement, target: HTMLB
         target.appendChild(clone);
     }
 
-    const style = getComputedStyle(nativeButton);
-    target.style.setProperty("color", style.color, "important");
+    const neutralColor = getNeutralControlColor();
+    if (neutralColor) target.style.setProperty("color", neutralColor, "important");
+    else target.style.removeProperty("color");
 }
 
 function syncControlAction(button: HTMLButtonElement) {
@@ -313,7 +319,12 @@ function createControlAction(kind: ControlKind) {
         event.stopPropagation();
         const nativeButton = getNativeControlButton(...CONTROL_LABELS[kind]);
         nativeButton?.click();
-        setControlsOpen(false);
+
+        // Keep the compact controls open. Discord may replace the native icon
+        // after toggling mute/deafen, so refresh the cloned visual on the next tick.
+        window.setTimeout(() => {
+            if (controlsOpen) refreshControlActions();
+        }, 50);
     });
 
     syncControlAction(button);
@@ -366,8 +377,8 @@ function createAccountDock() {
     controlsButton.setAttribute("aria-haspopup", "true");
     controlsButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 7h10.2a3 3 0 1 0 0-2H4a1 1 0 0 0 0 2Zm0 6h4.2a3 3 0 1 0 0-2H4a1 1 0 1 0 0 2Zm0 6h12.2a3 3 0 1 0 0-2H4a1 1 0 1 0 0 2Z"/></svg>';
 
-    const nativeSettings = getNativeControlButton("User Settings");
-    if (nativeSettings) controlsButton.style.setProperty("color", getComputedStyle(nativeSettings).color, "important");
+    const neutralColor = getNeutralControlColor();
+    if (neutralColor) controlsButton.style.setProperty("color", neutralColor, "important");
 
     controlsButton.addEventListener("click", event => {
         event.preventDefault();
@@ -397,9 +408,9 @@ function refreshDock() {
     if (profileButton) refreshProfileButton(profileButton);
 
     const controlsButton = accountDock.querySelector<HTMLButtonElement>(".vc-cdm-controls-button");
-    const nativeSettings = getNativeControlButton("User Settings");
-    if (controlsButton && nativeSettings) {
-        controlsButton.style.setProperty("color", getComputedStyle(nativeSettings).color, "important");
+    const neutralColor = getNeutralControlColor();
+    if (controlsButton && neutralColor) {
+        controlsButton.style.setProperty("color", neutralColor, "important");
     }
 
     if (!controlsMenu?.isConnected) createControlsMenu();
