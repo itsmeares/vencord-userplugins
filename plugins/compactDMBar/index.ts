@@ -7,35 +7,35 @@ import "./styles.css";
 import * as DataStore from "@api/DataStore";
 import definePlugin from "@utils/types";
 
-const WIDTH_KEY = "CompactDMBar_width";
+const MODE_KEY = "CompactDMBar_compactModeV3";
 const EXPANDED_WIDTH_KEY = "CompactDMBar_expandedWidth";
 
 const COMPACT_WIDTH = 72;
-const DEFAULT_EXPANDED_WIDTH = 240;
-const EXPANDED_THRESHOLD = 180;
-const MAX_WIDTH = 360;
-const WIDTH_STEP = 16;
-const DRAG_SLOP = 4;
+const DEFAULT_EXPANDED_WIDTH = 280;
+const COMPACT_TRIGGER = 190;
+const MAX_WIDTH = 480;
 
 const SIDEBAR_SELECTOR = '#app-mount [class*="sidebarList_"]:has([class*="privateChannels_"])';
 
 let observer: MutationObserver | null = null;
 let animationFrame = 0;
 let sidebar: HTMLElement | null = null;
-let resizeHandle: HTMLDivElement | null = null;
+let floatingHandle: HTMLButtonElement | null = null;
 let accountDock: HTMLDivElement | null = null;
-let currentWidth = COMPACT_WIDTH;
+let compactMode = true;
 let lastExpandedWidth = DEFAULT_EXPANDED_WIDTH;
 let controlsOpen = false;
 let avatarSignature = "";
 let controlsSignature = "";
+let dragSession: {
+    pointerId: number;
+    startX: number;
+    startWidth: number;
+    moved: boolean;
+} | null = null;
 
-function clampWidth(width: number) {
-    return Math.min(MAX_WIDTH, Math.max(COMPACT_WIDTH, Math.round(width)));
-}
-
-function isExpanded(width = currentWidth) {
-    return width >= EXPANDED_THRESHOLD;
+function clampExpandedWidth(width: number) {
+    return Math.min(MAX_WIDTH, Math.max(COMPACT_TRIGGER, Math.round(width)));
 }
 
 function getNativePanels() {
@@ -68,166 +68,155 @@ function getNativeControlButtons() {
 
 function setControlsOpen(open: boolean) {
     controlsOpen = open;
-    if (accountDock) {
-        accountDock.dataset.controlsOpen = String(open);
-    }
+    if (accountDock) accountDock.dataset.controlsOpen = String(open);
 }
 
-async function persistWidth() {
-    await DataStore.set(WIDTH_KEY, currentWidth);
+async function persistState() {
+    await DataStore.set(MODE_KEY, compactMode);
     await DataStore.set(EXPANDED_WIDTH_KEY, lastExpandedWidth);
 }
 
-function applyWidth(width: number, rememberExpanded = true) {
-    currentWidth = clampWidth(width);
-
-    if (rememberExpanded && isExpanded(currentWidth)) {
-        lastExpandedWidth = currentWidth;
-    }
-
+function clearSidebarWidth() {
     if (!sidebar) return;
 
-    const cssWidth = `${currentWidth}px`;
-
-    sidebar.style.setProperty("--vc-compact-dm-width", cssWidth);
-    sidebar.style.setProperty("width", cssWidth, "important");
-    sidebar.style.setProperty("min-width", cssWidth, "important");
-    sidebar.style.setProperty("max-width", cssWidth, "important");
-    sidebar.style.setProperty("flex", `0 0 ${cssWidth}`, "important");
-    sidebar.dataset.vcCompactDmExpanded = String(isExpanded());
-}
-
-function applyDraggedWidth(width: number) {
-    const nextWidth = clampWidth(width);
-
-    if (nextWidth < EXPANDED_THRESHOLD) {
-        applyWidth(COMPACT_WIDTH, false);
-    } else {
-        applyWidth(nextWidth);
+    for (const property of ["width", "min-width", "max-width", "flex-basis"]) {
+        sidebar.style.removeProperty(property);
     }
 }
 
-function applyPointerWidth(clientX: number, sidebarLeft: number) {
-    const requestedWidth = clientX - sidebarLeft;
-
-    if (requestedWidth < EXPANDED_THRESHOLD) {
-        applyWidth(COMPACT_WIDTH, false);
-    } else {
-        applyWidth(requestedWidth);
-    }
-}
-
-function toggleWidth() {
-    if (isExpanded()) {
-        applyWidth(COMPACT_WIDTH, false);
-    } else {
-        applyWidth(lastExpandedWidth || DEFAULT_EXPANDED_WIDTH);
-    }
-
-    void persistWidth();
-}
-
-function createResizeHandle() {
+function forceSidebarWidth(width: number) {
     if (!sidebar) return;
 
-    resizeHandle?.remove();
+    const value = `${Math.round(width)}px`;
+    sidebar.style.setProperty("width", value, "important");
+    sidebar.style.setProperty("min-width", value, "important");
+    sidebar.style.setProperty("max-width", value, "important");
+    sidebar.style.setProperty("flex-basis", value, "important");
+    sidebar.style.setProperty("--vc-compact-dm-width", value);
+}
 
-    const handle = document.createElement("div");
-    handle.className = "vc-cdm-resize-handle";
-    handle.setAttribute("role", "separator");
-    handle.setAttribute("aria-label", "Resize direct messages sidebar");
-    handle.setAttribute("aria-orientation", "vertical");
-    handle.title = "Drag to resize. Click to toggle compact mode.";
-    handle.tabIndex = 0;
+function syncHandlePosition() {
+    if (!sidebar || !floatingHandle) return;
 
-    const grip = document.createElement("div");
-    grip.className = "vc-cdm-resize-grip";
-    grip.setAttribute("aria-hidden", "true");
-    grip.innerHTML = `
-        <svg viewBox="0 0 20 20" width="14" height="14">
-            <path fill="currentColor" d="M7.8 4.6 2.4 10l5.4 5.4 1.4-1.4L5.2 10l4-4-1.4-1.4Zm4.4 0L10.8 6l4 4-4 4 1.4 1.4 5.4-5.4-5.4-5.4Z"/>
-        </svg>`;
-    handle.appendChild(grip);
+    const rect = sidebar.getBoundingClientRect();
+    floatingHandle.style.left = `${Math.round(rect.right - 10)}px`;
+    floatingHandle.style.top = `${Math.round(rect.top + rect.height / 2 - 17)}px`;
+    floatingHandle.dataset.compact = String(compactMode);
+    floatingHandle.setAttribute("aria-label", compactMode ? "Expand direct messages sidebar" : "Compact direct messages sidebar");
+    floatingHandle.title = compactMode
+        ? "Drag right or click to expand"
+        : "Drag left or click to compact";
+}
 
-    handle.addEventListener("keydown", event => {
-        switch (event.key) {
-            case "Enter":
-            case " ":
-                event.preventDefault();
-                toggleWidth();
-                break;
-            case "ArrowLeft":
-                event.preventDefault();
-                applyDraggedWidth(currentWidth - WIDTH_STEP);
-                void persistWidth();
-                break;
-            case "ArrowRight":
-                event.preventDefault();
-                applyDraggedWidth(currentWidth + WIDTH_STEP);
-                void persistWidth();
-                break;
-            case "Home":
-                event.preventDefault();
-                applyWidth(COMPACT_WIDTH, false);
-                void persistWidth();
-                break;
-            case "End":
-                event.preventDefault();
-                applyWidth(lastExpandedWidth || DEFAULT_EXPANDED_WIDTH);
-                void persistWidth();
-                break;
+function applyMode() {
+    if (!sidebar) return;
+
+    sidebar.dataset.vcCompactDmBar = "true";
+    sidebar.dataset.vcCompactDmExpanded = String(!compactMode);
+
+    if (compactMode) {
+        forceSidebarWidth(COMPACT_WIDTH);
+    } else {
+        forceSidebarWidth(lastExpandedWidth);
+    }
+
+    syncHandlePosition();
+}
+
+function setCompact(compact: boolean, expandedWidth?: number) {
+    compactMode = compact;
+
+    if (!compact) {
+        if (typeof expandedWidth === "number" && Number.isFinite(expandedWidth)) {
+            lastExpandedWidth = clampExpandedWidth(expandedWidth);
         }
-    });
+    } else {
+        setControlsOpen(false);
+    }
+
+    applyMode();
+}
+
+function toggleMode() {
+    setCompact(!compactMode);
+    void persistState();
+}
+
+function createFloatingHandle() {
+    floatingHandle?.remove();
+
+    const handle = document.createElement("button");
+    handle.className = "vc-cdm-floating-handle";
+    handle.type = "button";
+    handle.innerHTML = `
+        <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true">
+            <path class="vc-cdm-handle-chevron vc-cdm-handle-chevron-left" fill="currentColor" d="M12.8 4.6 7.4 10l5.4 5.4 1.4-1.4-4-4 4-4-1.4-1.4Z"/>
+            <path class="vc-cdm-handle-chevron vc-cdm-handle-chevron-right" fill="currentColor" d="m7.2 4.6-1.4 1.4 4 4-4 4 1.4 1.4 5.4-5.4-5.4-5.4Z"/>
+        </svg>`;
 
     handle.addEventListener("pointerdown", event => {
-        if (event.button !== 0 || !sidebar) return;
+        if (event.button !== 0) return;
 
         event.preventDefault();
         event.stopPropagation();
 
-        const pointerId = event.pointerId;
-        const startX = event.clientX;
-        const sidebarLeft = sidebar.getBoundingClientRect().left;
-        let dragged = false;
+        dragSession = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startWidth: compactMode ? COMPACT_WIDTH : lastExpandedWidth,
+            moved: false
+        };
 
+        handle.setPointerCapture?.(event.pointerId);
         handle.dataset.dragging = "true";
         document.body.classList.add("vc-cdm-resizing");
-
-        const onMove = (moveEvent: PointerEvent) => {
-            if (moveEvent.pointerId !== pointerId) return;
-
-            if (Math.abs(moveEvent.clientX - startX) >= DRAG_SLOP) {
-                dragged = true;
-            }
-
-            if (!dragged) return;
-            applyPointerWidth(moveEvent.clientX, sidebarLeft);
-        };
-
-        const finish = (upEvent: PointerEvent) => {
-            if (upEvent.pointerId !== pointerId) return;
-
-            window.removeEventListener("pointermove", onMove, true);
-            window.removeEventListener("pointerup", finish, true);
-            window.removeEventListener("pointercancel", finish, true);
-            delete handle.dataset.dragging;
-            document.body.classList.remove("vc-cdm-resizing");
-
-            if (upEvent.type !== "pointercancel" && !dragged) {
-                toggleWidth();
-                return;
-            }
-
-            void persistWidth();
-        };
-
-        window.addEventListener("pointermove", onMove, true);
-        window.addEventListener("pointerup", finish, true);
-        window.addEventListener("pointercancel", finish, true);
     });
 
-    sidebar.appendChild(handle);
-    resizeHandle = handle;
+    handle.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (dragSession?.moved) return;
+        toggleMode();
+    });
+
+    handle.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        toggleMode();
+    });
+
+    document.body.appendChild(handle);
+    floatingHandle = handle;
+    syncHandlePosition();
+}
+
+function onWindowPointerMove(event: PointerEvent) {
+    if (!dragSession || event.pointerId !== dragSession.pointerId) return;
+
+    const delta = event.clientX - dragSession.startX;
+    if (Math.abs(delta) >= 3) dragSession.moved = true;
+
+    const desiredWidth = dragSession.startWidth + delta;
+
+    if (desiredWidth <= COMPACT_TRIGGER) {
+        setCompact(true);
+    } else {
+        setCompact(false, desiredWidth);
+    }
+}
+
+function finishDrag(event: PointerEvent) {
+    if (!dragSession || event.pointerId !== dragSession.pointerId) return;
+
+    floatingHandle?.releasePointerCapture?.(event.pointerId);
+    if (floatingHandle) delete floatingHandle.dataset.dragging;
+    document.body.classList.remove("vc-cdm-resizing");
+
+    const moved = dragSession.moved;
+    dragSession = null;
+
+    if (moved) void persistState();
 }
 
 function cloneNativeIcon(button: HTMLButtonElement) {
@@ -377,10 +366,7 @@ function refreshDock() {
 }
 
 function detachSidebar() {
-    resizeHandle?.remove();
     accountDock?.remove();
-
-    resizeHandle = null;
     accountDock = null;
     avatarSignature = "";
     controlsSignature = "";
@@ -390,10 +376,7 @@ function detachSidebar() {
         delete sidebar.dataset.vcCompactDmBar;
         delete sidebar.dataset.vcCompactDmExpanded;
         sidebar.style.removeProperty("--vc-compact-dm-width");
-        sidebar.style.removeProperty("width");
-        sidebar.style.removeProperty("min-width");
-        sidebar.style.removeProperty("max-width");
-        sidebar.style.removeProperty("flex");
+        clearSidebarWidth();
     }
 
     sidebar = null;
@@ -406,23 +389,22 @@ function refresh() {
 
     if (!nextSidebar) {
         if (sidebar) detachSidebar();
+        floatingHandle?.remove();
+        floatingHandle = null;
         return;
     }
 
     if (sidebar !== nextSidebar) {
         detachSidebar();
         sidebar = nextSidebar;
-        sidebar.dataset.vcCompactDmBar = "true";
-        applyWidth(currentWidth, false);
-        createResizeHandle();
+        applyMode();
         createAccountDock();
+        if (!floatingHandle?.isConnected) createFloatingHandle();
         return;
     }
 
-    sidebar.dataset.vcCompactDmBar = "true";
-    applyWidth(currentWidth, false);
-
-    if (!resizeHandle?.isConnected) createResizeHandle();
+    applyMode();
+    if (!floatingHandle?.isConnected) createFloatingHandle();
     refreshDock();
 }
 
@@ -445,23 +427,20 @@ export default definePlugin({
     authors: [{ name: "itsmeares", id: 0n }],
 
     async start() {
-        const storedWidth = await DataStore.get<number>(WIDTH_KEY);
+        const storedMode = await DataStore.get<boolean>(MODE_KEY);
         const storedExpandedWidth = await DataStore.get<number>(EXPANDED_WIDTH_KEY);
 
-        if (typeof storedExpandedWidth === "number" && Number.isFinite(storedExpandedWidth)) {
-            lastExpandedWidth = Math.max(EXPANDED_THRESHOLD, clampWidth(storedExpandedWidth));
-        }
+        compactMode = typeof storedMode === "boolean" ? storedMode : true;
 
-        if (typeof storedWidth === "number" && Number.isFinite(storedWidth)) {
-            currentWidth = clampWidth(storedWidth);
-            if (isExpanded(currentWidth)) {
-                lastExpandedWidth = currentWidth;
-            } else {
-                currentWidth = COMPACT_WIDTH;
-            }
+        if (typeof storedExpandedWidth === "number" && Number.isFinite(storedExpandedWidth)) {
+            lastExpandedWidth = clampExpandedWidth(storedExpandedWidth);
         }
 
         document.addEventListener("pointerdown", onDocumentPointerDown, true);
+        window.addEventListener("pointermove", onWindowPointerMove, true);
+        window.addEventListener("pointerup", finishDrag, true);
+        window.addEventListener("pointercancel", finishDrag, true);
+        window.addEventListener("resize", scheduleRefresh);
 
         observer = new MutationObserver(scheduleRefresh);
         observer.observe(document.body, {
@@ -477,6 +456,10 @@ export default definePlugin({
         observer = null;
 
         document.removeEventListener("pointerdown", onDocumentPointerDown, true);
+        window.removeEventListener("pointermove", onWindowPointerMove, true);
+        window.removeEventListener("pointerup", finishDrag, true);
+        window.removeEventListener("pointercancel", finishDrag, true);
+        window.removeEventListener("resize", scheduleRefresh);
         document.body.classList.remove("vc-cdm-resizing");
 
         if (animationFrame) {
@@ -484,6 +467,9 @@ export default definePlugin({
             animationFrame = 0;
         }
 
+        floatingHandle?.remove();
+        floatingHandle = null;
+        dragSession = null;
         detachSidebar();
     }
 });
