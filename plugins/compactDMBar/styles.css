@@ -15,78 +15,53 @@
     container-type: normal;
 }
 
-/* Discord's normal sidebar handle conflicts with the plugin-owned persisted resizer. */
-#app-mount [data-vc-compact-dm-bar="true"] + [class*="sidebarResizeHandle_"] {
-    pointer-events: none;
-    opacity: 0;
+body.vc-cdm-resizing,
+body.vc-cdm-resizing * {
+    cursor: ew-resize !important;
+    user-select: none !important;
 }
 
-/* ------------------------------------------------------------------------- */
-/* Resizer                                                                   */
-/* ------------------------------------------------------------------------- */
-
-.vc-cdm-resize-handle {
-    position: absolute;
-    z-index: 1005;
-    top: 0;
-    right: -5px;
-    bottom: 0;
-    width: 10px;
-    cursor: ew-resize;
-    touch-action: none;
-    user-select: none;
-    outline: none;
-}
-
-.vc-cdm-resize-handle::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 4px;
-    width: 2px;
-    background: var(--border-subtle, var(--background-modifier-accent));
-    opacity: 0;
-    transition: opacity 120ms ease, background-color 120ms ease;
-}
-
-.vc-cdm-resize-handle:hover::before,
-.vc-cdm-resize-handle:focus-visible::before,
-.vc-cdm-resize-handle[data-dragging="true"]::before {
-    opacity: 1;
-    background: var(--interactive-hover, var(--text-muted));
-}
-
-.vc-cdm-resize-grip {
-    position: absolute;
-    top: 50%;
-    left: 50%;
+/* Floating handle lives on document.body so Discord's native resizer cannot cover it. */
+.vc-cdm-floating-handle {
+    position: fixed;
+    z-index: 2147483000;
     display: grid;
     place-items: center;
-    width: 22px;
-    height: 30px;
+    width: 20px;
+    height: 34px;
+    margin: 0;
+    padding: 0;
     border: 1px solid var(--border-subtle, var(--background-modifier-accent));
     border-radius: 8px;
     color: var(--interactive-normal, var(--text-muted));
     background: var(--background-floating, var(--background-base-low));
     box-shadow: var(--elevation-low);
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(.92);
-    transition: opacity 120ms ease, transform 120ms ease;
-    pointer-events: none;
+    cursor: ew-resize;
+    touch-action: none;
 }
 
-.vc-cdm-resize-handle:hover .vc-cdm-resize-grip,
-.vc-cdm-resize-handle:focus-visible .vc-cdm-resize-grip,
-.vc-cdm-resize-handle[data-dragging="true"] .vc-cdm-resize-grip {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+.vc-cdm-floating-handle:hover,
+.vc-cdm-floating-handle:focus-visible,
+.vc-cdm-floating-handle[data-dragging="true"] {
+    color: var(--interactive-hover, var(--header-primary));
+    background: var(--background-modifier-selected, var(--background-floating));
 }
 
-body.vc-cdm-resizing,
-body.vc-cdm-resizing * {
-    cursor: ew-resize !important;
-    user-select: none !important;
+.vc-cdm-floating-handle:focus-visible {
+    outline: 2px solid var(--focus-primary, var(--brand-500));
+    outline-offset: 2px;
+}
+
+.vc-cdm-floating-handle .vc-cdm-handle-chevron-right {
+    display: none;
+}
+
+.vc-cdm-floating-handle[data-compact="true"] .vc-cdm-handle-chevron-left {
+    display: none;
+}
+
+.vc-cdm-floating-handle[data-compact="true"] .vc-cdm-handle-chevron-right {
+    display: block;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -329,18 +304,16 @@ body.vc-cdm-resizing * {
 /* Expanded state                                                            */
 /* ------------------------------------------------------------------------- */
 
-/* Once dragged past the compact threshold, Discord's native labels/layout return. */
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="true"] [class*="privateChannels_"] {
     width: 100%;
     min-width: 0;
 }
 
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="true"] ~ [class*="panels_"] {
-    width: var(--vc-compact-dm-width, 240px) !important;
-    max-width: var(--vc-compact-dm-width, 240px) !important;
+    width: var(--vc-compact-dm-width, 280px) !important;
+    max-width: var(--vc-compact-dm-width, 280px) !important;
 }
 
-/* Keep the native account panel aligned with a user-resized DM sidebar. */
 #app-mount [data-vc-compact-dm-bar="true"] ~ [class*="panels_"] {
     box-sizing: border-box;
 }
