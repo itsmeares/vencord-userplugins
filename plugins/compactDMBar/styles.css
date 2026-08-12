@@ -2,71 +2,43 @@
 
 :root {
     --vc-cdm-compact-width: 72px;
-    --vc-cdm-row-size: 56px;
-    --vc-cdm-avatar-size: 40px;
 }
 
 #app-mount [data-vc-compact-dm-bar="true"] {
     position: relative;
-    width: var(--vc-compact-dm-width, var(--vc-cdm-compact-width)) !important;
-    min-width: var(--vc-compact-dm-width, var(--vc-cdm-compact-width)) !important;
-    max-width: var(--vc-compact-dm-width, var(--vc-cdm-compact-width)) !important;
     overflow: visible;
     container-type: normal;
 }
 
-body.vc-cdm-resizing,
-body.vc-cdm-resizing * {
-    cursor: ew-resize !important;
-    user-select: none !important;
-}
+/* ------------------------------------------------------------------------- */
+/* Invisible Compact / Default toggle edge                                   */
+/* ------------------------------------------------------------------------- */
 
-/* Floating handle lives on document.body so Discord's native resizer cannot cover it. */
-.vc-cdm-floating-handle {
+.vc-cdm-toggle-edge {
     position: fixed;
-    z-index: 2147483000;
-    display: grid;
-    place-items: center;
-    width: 20px;
-    height: 34px;
-    margin: 0;
-    padding: 0;
-    border: 1px solid var(--border-subtle, var(--background-modifier-accent));
-    border-radius: 8px;
-    color: var(--interactive-normal, var(--text-muted));
-    background: var(--background-floating, var(--background-base-low));
-    box-shadow: var(--elevation-low);
-    cursor: ew-resize;
+    z-index: 1000000;
+    width: 8px;
+    background: transparent;
+    cursor: col-resize;
     touch-action: none;
+    user-select: none;
+    outline: none;
 }
 
-.vc-cdm-floating-handle:hover,
-.vc-cdm-floating-handle:focus-visible,
-.vc-cdm-floating-handle[data-dragging="true"] {
-    color: var(--interactive-hover, var(--header-primary));
-    background: var(--background-modifier-selected, var(--background-floating));
-}
-
-.vc-cdm-floating-handle:focus-visible {
-    outline: 2px solid var(--focus-primary, var(--brand-500));
-    outline-offset: 2px;
-}
-
-.vc-cdm-floating-handle .vc-cdm-handle-chevron-right {
-    display: none;
-}
-
-.vc-cdm-floating-handle[data-compact="true"] .vc-cdm-handle-chevron-left {
-    display: none;
-}
-
-.vc-cdm-floating-handle[data-compact="true"] .vc-cdm-handle-chevron-right {
-    display: block;
+.vc-cdm-toggle-edge:focus-visible {
+    background: color-mix(in srgb, var(--interactive-normal, #b5bac1) 18%, transparent);
 }
 
 /* ------------------------------------------------------------------------- */
 /* Compact state                                                             */
 /* ------------------------------------------------------------------------- */
+
+#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] {
+    width: var(--vc-cdm-compact-width) !important;
+    min-width: var(--vc-cdm-compact-width) !important;
+    max-width: var(--vc-cdm-compact-width) !important;
+    flex-basis: var(--vc-cdm-compact-width) !important;
+}
 
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] {
     width: 100%;
@@ -77,7 +49,7 @@ body.vc-cdm-resizing * {
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="scroller_"] {
     padding-left: 0 !important;
     padding-right: 0 !important;
-    padding-bottom: 118px !important;
+    padding-bottom: 104px !important;
     scrollbar-width: none;
 }
 
@@ -86,75 +58,86 @@ body.vc-cdm-resizing * {
     height: 0;
 }
 
-/* Search remains Discord's native clickable search target, but becomes icon-only. */
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="searchBar_"] {
-    width: 100%;
-    min-width: 0;
-    padding: 8px 0;
+/* Current Discord search is a native button inside searchBar_ */
+#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="searchBar_"] {
+    display: flex !important;
+    justify-content: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 8px 0 !important;
     box-sizing: border-box;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="searchBarComponent_"] {
+#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="searchBar_"] > button {
     position: relative;
-    display: grid;
-    place-items: center;
-    width: 44px;
-    min-width: 44px;
-    max-width: 44px;
-    height: 40px;
-    margin: 0 auto;
+    display: grid !important;
+    place-items: center !important;
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    height: 36px !important;
     padding: 0 !important;
-    overflow: hidden;
-    color: transparent !important;
-    font-size: 0 !important;
-    text-indent: -9999px;
+    border-radius: 11px !important;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="searchBarComponent_"]::after {
+#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="searchBar_"] > button > * {
+    display: none !important;
+}
+
+#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="searchBar_"] > button::after {
     content: "";
     width: 18px;
     height: 18px;
-    background: var(--interactive-normal, var(--text-muted));
-    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M10.5 4a6.5 6.5 0 1 0 3.98 11.64l4.44 4.44 1.42-1.42-4.44-4.44A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z'/%3E%3C/svg%3E") center / contain no-repeat;
-    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M10.5 4a6.5 6.5 0 1 0 3.98 11.64l4.44 4.44 1.42-1.42-4.44-4.44A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z'/%3E%3C/svg%3E") center / contain no-repeat;
+    background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10.5 3a7.5 7.5 0 1 0 4.69 13.35L20.84 22 22 20.84l-5.65-5.65A7.5 7.5 0 0 0 10.5 3Zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10.5 3a7.5 7.5 0 1 0 4.69 13.35L20.84 22 22 20.84l-5.65-5.65A7.5 7.5 0 0 0 10.5 3Zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannelsHeaderContainer_"] {
     display: none !important;
 }
 
-/* Every native navigation/DM row gets a server-list-like footprint. */
+/* Keep Discord's native row heights and avatar/status geometry. Only narrow and center. */
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] {
-    width: var(--vc-cdm-row-size);
-    min-width: var(--vc-cdm-row-size);
-    max-width: var(--vc-cdm-row-size);
-    margin-left: auto;
-    margin-right: auto;
+    width: 48px !important;
+    min-width: 48px !important;
+    max-width: 48px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="interactive_"],
+#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] > [class*="interactive_"] {
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    border-radius: 12px !important;
+}
+
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="link_"] {
-    width: var(--vc-cdm-row-size);
-    min-width: var(--vc-cdm-row-size);
-    max-width: var(--vc-cdm-row-size);
-    overflow: visible;
+    box-sizing: border-box !important;
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
 }
 
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="layout_"] {
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--vc-cdm-row-size);
-    min-width: var(--vc-cdm-row-size);
-    max-width: var(--vc-cdm-row-size);
-    min-height: 48px;
-    padding: 4px 8px !important;
+    box-sizing: border-box !important;
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     gap: 0 !important;
-    overflow: visible !important;
 }
 
-/* Text/details disappear, while the native avatar/icon remains untouched and centered. */
+/* Only remove the text/detail column. Do not size avatar_, wrapper_, svg or img. */
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="layout_"] > [class*="content_"],
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="nameAndDecorators_"],
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="subtext_"],
@@ -163,25 +146,24 @@ body.vc-cdm-resizing * {
     display: none !important;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="avatar_"],
+#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="layout_"] > [class*="avatar_"],
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="linkButtonIcon_"] {
     flex: 0 0 auto !important;
     margin: 0 !important;
     transform: none !important;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="avatar_"] {
-    width: var(--vc-cdm-avatar-size) !important;
-    height: var(--vc-cdm-avatar-size) !important;
-    max-width: var(--vc-cdm-avatar-size) !important;
-    max-height: var(--vc-cdm-avatar-size) !important;
+/* Discord adds a right-side name fade to DM links; it is unnecessary without names. */
+#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="channelNameFade_"] {
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
 }
 
 /* ------------------------------------------------------------------------- */
 /* Compact account dock                                                      */
 /* ------------------------------------------------------------------------- */
 
-/* Native account panel stays in the DOM so proxy buttons can trigger it. */
+/* Native panel remains mounted so proxy controls can click Discord's actions. */
 #app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] ~ [class*="panels_"] {
     opacity: 0 !important;
     pointer-events: none !important;
@@ -191,13 +173,17 @@ body.vc-cdm-resizing * {
 .vc-cdm-account-dock {
     position: absolute;
     z-index: 1004;
-    left: 12px;
-    bottom: 8px;
+    left: 0;
+    bottom: 0;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    width: 48px;
+    gap: 5px;
+    width: 72px;
+    padding: 7px 8px 8px;
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, .08));
+    background: var(--background-base-lowest, #111214);
 }
 
 #app-mount [data-vc-compact-dm-expanded="true"] .vc-cdm-account-dock {
@@ -217,10 +203,34 @@ body.vc-cdm-resizing * {
 }
 
 .vc-cdm-profile-button {
-    width: 48px;
-    height: 48px;
+    box-sizing: border-box;
+    width: 40px;
+    height: 40px;
+    padding: 2px;
+    border: 2px solid var(--vc-cdm-self-status, #b5bac1);
     border-radius: 50%;
     overflow: hidden;
+    background: transparent;
+}
+
+.vc-cdm-profile-image {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    pointer-events: none;
+}
+
+.vc-cdm-controls-button {
+    width: 40px;
+    height: 32px;
+    border-radius: 10px;
+}
+
+.vc-cdm-controls-button svg,
+.vc-cdm-control-action svg {
+    width: 19px;
+    height: 19px;
 }
 
 .vc-cdm-profile-button:hover,
@@ -237,42 +247,20 @@ body.vc-cdm-resizing * {
     outline-offset: 2px;
 }
 
-.vc-cdm-profile-image {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    object-fit: cover;
-    pointer-events: none;
-}
-
-.vc-cdm-profile-clone,
-.vc-cdm-profile-clone > * {
-    pointer-events: none !important;
-}
-
-.vc-cdm-controls-button {
-    width: 48px;
-    height: 38px;
-    border-radius: 12px;
-}
-
 .vc-cdm-controls-menu {
     position: absolute;
-    left: calc(100% + 10px);
-    bottom: 0;
+    left: calc(100% + 8px);
+    bottom: 8px;
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 6px;
-    border: 1px solid var(--border-subtle, var(--background-modifier-accent));
-    border-radius: 12px;
-    background: var(--background-floating, var(--background-base-high));
-    box-shadow: var(--elevation-high);
+    padding: 5px;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, .10));
+    border-radius: 11px;
+    background: var(--background-floating, #111214);
+    box-shadow: var(--elevation-high, 0 8px 24px rgba(0, 0, 0, .4));
     opacity: 0;
     visibility: hidden;
-    transform: translateX(-4px) scale(.98);
-    transform-origin: left bottom;
-    transition: opacity 120ms ease, transform 120ms ease, visibility 120ms;
     pointer-events: none;
     white-space: nowrap;
 }
@@ -280,40 +268,23 @@ body.vc-cdm-resizing * {
 .vc-cdm-account-dock[data-controls-open="true"] .vc-cdm-controls-menu {
     opacity: 1;
     visibility: visible;
-    transform: translateX(0) scale(1);
     pointer-events: auto;
 }
 
 .vc-cdm-control-action {
-    width: 36px;
-    height: 36px;
-    border-radius: 9px;
-}
-
-.vc-cdm-control-action svg {
-    width: 20px;
-    height: 20px;
-}
-
-.vc-cdm-control-fallback {
-    font-size: 20px;
-    line-height: 1;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
 }
 
 /* ------------------------------------------------------------------------- */
-/* Expanded state                                                            */
+/* Default state                                                             */
 /* ------------------------------------------------------------------------- */
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="true"] [class*="privateChannels_"] {
-    width: 100%;
+/* Default mode deliberately does not restyle Discord's sidebar or account panel. */
+#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="true"] {
+    width: auto;
     min-width: 0;
-}
-
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="true"] ~ [class*="panels_"] {
-    width: var(--vc-compact-dm-width, 280px) !important;
-    max-width: var(--vc-compact-dm-width, 280px) !important;
-}
-
-#app-mount [data-vc-compact-dm-bar="true"] ~ [class*="panels_"] {
-    box-sizing: border-box;
+    max-width: none;
+    flex-basis: auto;
 }
