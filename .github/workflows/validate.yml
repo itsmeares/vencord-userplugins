@@ -52,3 +52,30 @@ jobs:
             - name: Build Vencord with userplugins
               working-directory: Vencord
               run: pnpm build --standalone
+
+    powershell-sync:
+        runs-on: windows-latest
+
+        steps:
+            - name: Checkout userplugins
+              uses: actions/checkout@v7
+
+            - name: Create mock Vencord checkout
+              shell: pwsh
+              run: |
+                  New-Item -ItemType Directory -Force -Path mock-vencord | Out-Null
+                  Set-Content -Path mock-vencord/package.json -Value '{}'
+
+            - name: Run sync helper
+              shell: pwsh
+              run: ./scripts/sync.ps1 -VencordPath ./mock-vencord
+
+            - name: Verify managed plugin copy
+              shell: pwsh
+              run: |
+                  if (-not (Test-Path ./mock-vencord/src/userplugins/compactDMBar/index.ts)) {
+                      throw 'compactDMBar index.ts was not synced'
+                  }
+                  if (-not (Test-Path ./mock-vencord/src/userplugins/compactDMBar/.vencord-userplugins-managed)) {
+                      throw 'managed marker was not created'
+                  }
