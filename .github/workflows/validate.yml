@@ -35,14 +35,14 @@ jobs:
                   cache: pnpm
                   cache-dependency-path: Vencord/pnpm-lock.yaml
 
-            - name: Link userplugins
+            - name: Copy userplugins into Vencord
               shell: bash
               run: |
                   mkdir -p Vencord/src/userplugins
                   for plugin in userplugins/plugins/*; do
                       [ -d "$plugin" ] || continue
                       [ -f "$plugin/index.ts" ] || [ -f "$plugin/index.tsx" ] || continue
-                      ln -s "$GITHUB_WORKSPACE/$plugin" "Vencord/src/userplugins/$(basename "$plugin")"
+                      cp -R "$plugin" "Vencord/src/userplugins/$(basename "$plugin")"
                   done
 
             - name: Install Vencord dependencies
