@@ -4,10 +4,9 @@
 
 import "./styles.css";
 
-import * as DataStore from "@api/DataStore";
 import definePlugin from "@utils/types";
 
-const MODE_KEY = "CompactDMBar_compactModeV4";
+const MODE_STORAGE_KEY = "vc-compact-dm-bar:mode:v1";
 const COMPACT_WIDTH = 72;
 const SIDEBAR_SELECTOR = '#app-mount [class*="sidebarList_"]:has([class*="privateChannels_"])';
 
@@ -28,6 +27,22 @@ let hiddenNativePanels: {
     visibility: string;
     pointerEvents: string;
 } | null = null;
+
+function readStoredMode() {
+    try {
+        return localStorage.getItem(MODE_STORAGE_KEY) !== "default";
+    } catch {
+        return true;
+    }
+}
+
+function persistMode() {
+    try {
+        localStorage.setItem(MODE_STORAGE_KEY, compactMode ? "compact" : "default");
+    } catch (error) {
+        console.warn("[CompactDMBar] Failed to persist compact mode", error);
+    }
+}
 
 function getNativePanels() {
     if (!sidebar) return null;
@@ -103,6 +118,44 @@ function getPresenceColor() {
     return "#b5bac1";
 }
 
+function clearSidebarWidth() {
+    if (!sidebar) return;
+
+    for (const property of ["width", "min-width", "max-width", "flex-basis"]) {
+        sidebar.style.removeProperty(property);
+    }
+    sidebar.style.removeProperty("--vc-compact-dm-width");
+}
+
+function syncNativeResizeHandle() {
+    if (!sidebar) return;
+
+    const parent = sidebar.parentElement;
+    const next = parent?.querySelector<HTMLElement>(':scope > [class*="sidebarResizeHandle_"]')
+        ?? parent?.querySelector<HTMLElement>('[class*="sidebarResizeHandle_"]')
+        ?? null;
+
+    if (nativeResizeHandle && nativeResizeHandle !== next) {
+        nativeResizeHandle.style.removeProperty("pointer-events");
+        nativeResizeHandle.style.removeProperty("opacity");
+    }
+
+    nativeResizeHandle = next;
+    if (!nativeResizeHandle) return;
+
+    nativeResizeHandle.style.setProperty("pointer-events", "none", "important");
+    nativeResizeHandle.style.setProperty("opacity", "0", "important");
+}
+
+function syncToggleEdge() {
+    if (!sidebar || !toggleEdge) return;
+
+    const rect = sidebar.getBoundingClientRect();
+    toggleEdge.style.left = `${Math.round(rect.right - 4)}px`;
+    toggleEdge.style.top = `${Math.round(rect.top)}px`;
+    toggleEdge.style.height = `${Math.round(rect.height)}px`;
+}
+
 function syncControlsMenuPosition() {
     if (!controlsMenu || !accountDock || !controlsOpen) return;
 
@@ -121,21 +174,6 @@ function setControlsOpen(open: boolean) {
     if (controlsMenu) controlsMenu.dataset.open = String(controlsOpen);
 
     if (controlsOpen) syncControlsMenuPosition();
-}
-
-function persistMode() {
-    void DataStore.set(MODE_KEY, compactMode).catch(error => {
-        console.warn("[CompactDMBar] Failed to persist compact mode", error);
-    });
-}
-
-function clearSidebarWidth() {
-    if (!sidebar) return;
-
-    for (const property of ["width", "min-width", "max-width", "flex-basis"]) {
-        sidebar.style.removeProperty(property);
-    }
-    sidebar.style.removeProperty("--vc-compact-dm-width");
 }
 
 function applyMode() {
@@ -170,35 +208,6 @@ function toggleMode() {
     compactMode = !compactMode;
     applyMode();
     persistMode();
-}
-
-function syncNativeResizeHandle() {
-    if (!sidebar) return;
-
-    const parent = sidebar.parentElement;
-    const next = parent?.querySelector<HTMLElement>(':scope > [class*="sidebarResizeHandle_"]')
-        ?? parent?.querySelector<HTMLElement>('[class*="sidebarResizeHandle_"]')
-        ?? null;
-
-    if (nativeResizeHandle && nativeResizeHandle !== next) {
-        nativeResizeHandle.style.removeProperty("pointer-events");
-        nativeResizeHandle.style.removeProperty("opacity");
-    }
-
-    nativeResizeHandle = next;
-    if (!nativeResizeHandle) return;
-
-    nativeResizeHandle.style.setProperty("pointer-events", "none", "important");
-    nativeResizeHandle.style.setProperty("opacity", "0", "important");
-}
-
-function syncToggleEdge() {
-    if (!sidebar || !toggleEdge) return;
-
-    const rect = sidebar.getBoundingClientRect();
-    toggleEdge.style.left = `${Math.round(rect.right - 4)}px`;
-    toggleEdge.style.top = `${Math.round(rect.top)}px`;
-    toggleEdge.style.height = `${Math.round(rect.height)}px`;
 }
 
 function createToggleEdge() {
@@ -420,7 +429,7 @@ export default definePlugin({
 
     start() {
         running = true;
-        compactMode = true;
+        compactMode = readStoredMode();
 
         document.addEventListener("pointerdown", onDocumentPointerDown, true);
         window.addEventListener("resize", scheduleRefresh);
@@ -431,17 +440,7 @@ export default definePlugin({
             subtree: true
         });
 
-        // Initialise the runtime immediately. Vencord's plugin manager does not
-        // await promises returned by start(), so DataStore must not gate setup.
         scheduleRefresh();
-
-        void DataStore.get<boolean>(MODE_KEY).then(storedMode => {
-            if (!running) return;
-            if (typeof storedMode === "boolean") compactMode = storedMode;
-            scheduleRefresh();
-        }).catch(error => {
-            console.warn("[CompactDMBar] Failed to restore compact mode", error);
-        });
     },
 
     stop() {
