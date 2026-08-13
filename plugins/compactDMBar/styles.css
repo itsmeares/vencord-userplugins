@@ -131,24 +131,28 @@
 
 /* Native account panel */
 
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) {
+[data-vc-cdm-root="compact"] {
     overflow: visible;
 }
 
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) > [class*="panels_"] {
+[data-vc-cdm-root="compact"] > [class*="panels_"] {
     left: var(--vc-cdm-server-rail-width);
     right: auto;
     bottom: 0;
     width: var(--vc-cdm-width);
     height: auto;
     overflow: visible;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
 }
 
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) > [class*="panels_"] > [class*="wrapper_"] {
+[data-vc-cdm-root="compact"] > [class*="panels_"] > [class*="wrapper_"] {
     display: none;
 }
 
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) > [class*="panels_"] > [class*="container_"] {
+[data-vc-cdm-root="compact"] > [class*="panels_"] > [class*="container_"]:has(> [class*="accountPopoutButtonWrapper_"]) {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -161,17 +165,20 @@
     min-height: 97px;
     padding: 8px 16px 10px;
     margin: 0;
-    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, .08));
-    background: var(--background-base-lowest, #111214);
     overflow: visible;
+    background: var(--background-base-lowest, #111214);
+    border: 0;
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, .08));
+    border-radius: 0;
+    box-shadow: none;
 }
 
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) > [class*="panels_"] > [class*="container_"] > [class*="container_"][class*="fitInAccount_"],
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="accountPopoutButtonWrapper_"] [class*="nameTag_"] {
+[data-vc-cdm-root="compact"] > [class*="panels_"] > [class*="container_"]:has(> [class*="accountPopoutButtonWrapper_"]) > [class*="container_"][class*="fitInAccount_"],
+[data-vc-cdm-root="compact"] [class*="accountPopoutButtonWrapper_"] [class*="nameTag_"] {
     display: none;
 }
 
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="accountPopoutButtonWrapper_"] {
+[data-vc-cdm-root="compact"] [class*="accountPopoutButtonWrapper_"] {
     box-sizing: border-box;
     order: 1;
     flex: 0 0 auto;
@@ -182,27 +189,51 @@
     padding: 4px;
     margin: 0;
     gap: 0;
-    border-radius: 50%;
-    background: transparent;
     overflow: hidden;
+    background: transparent;
+    border-radius: 50%;
 }
 
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="accountPopoutButtonWrapper_"] [class*="avatar_"] {
+[data-vc-cdm-root="compact"] [class*="accountPopoutButtonWrapper_"] [class*="avatar_"] {
     flex: 0 0 auto;
     margin: 0;
 }
 
-/* The only added account-panel control. Discord renders it with its native Button. */
-.vc-cdm-controls-toggle {
+/* The account-panel patch inserts this native-styled button into Discord's
+ * real buttons container, so the container itself becomes the compact row. */
+
+[data-vc-cdm-root="compact"] > [class*="panels_"] > [class*="container_"]:has(> [class*="accountPopoutButtonWrapper_"]) > [class*="buttons_"] {
+    position: relative;
     order: 2;
+    align-self: flex-start;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
     flex: 0 0 auto;
+    gap: 4px;
+    width: 40px;
+    min-width: 40px;
+    max-width: none;
+    height: 32px;
+    padding: 0;
+    margin: 0;
+    overflow: visible;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.vc-cdm-controls-toggle {
+    order: -1;
+    flex: 0 0 40px;
     width: 40px;
     min-width: 40px;
     max-width: 40px;
     height: 32px;
     padding: 0;
+    margin: 0;
     border-radius: 10px;
-    transform: translateY(-3px);
 }
 
 .vc-cdm-controls-toggle svg {
@@ -211,48 +242,50 @@
     height: 20px;
 }
 
-/* Reuse Discord's real mute/deafen/settings buttons as the compact flyout. */
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="container_"] > [class*="buttons_"] {
+/* Keep every existing Discord/Vencord account action mounted, but collapse
+ * everything except the compact toggle until the user opens the row. */
+[data-vc-cdm-root="compact"] [class*="buttons_"] > :not(.vc-cdm-controls-toggle) {
+    display: none;
+}
+
+[data-vc-cdm-root="compact"] [class*="buttons_"]:has(.vc-cdm-controls-open) {
+    width: max-content;
+}
+
+[data-vc-cdm-root="compact"] [class*="buttons_"]:has(.vc-cdm-controls-open)::before {
+    content: "";
     position: absolute;
-    z-index: 1000;
-    left: calc(100% + 8px);
-    bottom: 9px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    width: auto;
-    height: auto;
-    padding: 5px;
+    z-index: -1;
+    left: 48px;
+    right: -5px;
+    top: -6px;
+    bottom: -6px;
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, .10));
     border-radius: 11px;
     background: var(--background-floating, #111214);
     box-shadow: var(--elevation-high, 0 8px 24px rgba(0, 0, 0, .4));
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    white-space: nowrap;
 }
 
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="container_"]:has(.vc-cdm-controls-open) > [class*="buttons_"] {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
+[data-vc-cdm-root="compact"] [class*="buttons_"]:has(.vc-cdm-controls-open) > .vc-cdm-controls-toggle {
+    margin-right: 9px;
 }
 
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="buttons_"] [class*="buttonChevron_"] {
+[data-vc-cdm-root="compact"] [class*="buttons_"]:has(.vc-cdm-controls-open) > :not(.vc-cdm-controls-toggle) {
+    display: flex;
+    flex: 0 0 auto;
+}
+
+[data-vc-cdm-root="compact"] [class*="buttons_"] [class*="buttonChevron_"] {
     display: none;
 }
 
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="buttons_"] > [class*="audioButtonParent_"] {
+[data-vc-cdm-root="compact"] [class*="buttons_"] > [class*="audioButtonParent_"] {
     width: 34px;
     height: 34px;
 }
 
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="buttons_"] :is(
-    [class*="audioButtonWithMenu_"],
-    [class*="audioButtonParent_"] + button
-),
-[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="buttons_"] > button {
+[data-vc-cdm-root="compact"] [class*="buttons_"] [class*="audioButtonWithMenu_"],
+[data-vc-cdm-root="compact"] [class*="buttons_"] > button:not(.vc-cdm-controls-toggle) {
     width: 34px;
     min-width: 34px;
     max-width: 34px;

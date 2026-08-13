@@ -31,6 +31,7 @@ type InlineWidthSnapshot = Record<(typeof WIDTH_PROPERTIES)[number], {
 }>;
 
 let sidebar: HTMLElement | null = null;
+let sidebarRoot: HTMLElement | null = null;
 let resizeHandle: HTMLElement | null = null;
 let parentObserver: MutationObserver | null = null;
 let animationFrame = 0;
@@ -47,7 +48,7 @@ function ControlsIcon() {
     );
 }
 
-const ControlsToggleButton = ErrorBoundary.wrap(() => {
+const ControlsToggleButton = ErrorBoundary.wrap((props: { nameplate?: any; }) => {
     const { compactMode } = settings.use(["compactMode"]);
     const [open, setOpen] = React.useState(false);
     const buttonRef = React.useRef<HTMLButtonElement | null>(null);
@@ -62,11 +63,9 @@ const ControlsToggleButton = ErrorBoundary.wrap(() => {
         const closeOutside = (event: PointerEvent) => {
             if (!(event.target instanceof Node)) return;
 
-            const button = buttonRef.current;
-            const accountPanel = button?.parentElement;
-            const nativeButtons = accountPanel?.querySelector<HTMLElement>(':scope > [class*="buttons_"]');
+            const nativeButtons = buttonRef.current?.parentElement;
+            if (nativeButtons?.contains(event.target)) return;
 
-            if (button?.contains(event.target) || nativeButtons?.contains(event.target)) return;
             setOpen(false);
         };
 
@@ -91,6 +90,7 @@ const ControlsToggleButton = ErrorBoundary.wrap(() => {
             className={`vc-cdm-controls-toggle${open ? " vc-cdm-controls-open" : ""}`}
             tooltipText="Audio and settings"
             icon={ControlsIcon}
+            plated={props?.nameplate != null}
             ariaExpanded={open}
             onClick={() => setOpen(value => !value)}
         />
@@ -136,8 +136,10 @@ function applyMode() {
         if (!inlineWidth) inlineWidth = snapshotInlineWidth(sidebar);
         clearInlineWidth(sidebar);
         sidebar.dataset.vcCdmState = "compact";
+        if (sidebarRoot) sidebarRoot.dataset.vcCdmRoot = "compact";
     } else {
         delete sidebar.dataset.vcCdmState;
+        if (sidebarRoot) delete sidebarRoot.dataset.vcCdmRoot;
         restoreInlineWidth(sidebar);
     }
 }
@@ -153,35 +155,10 @@ function onHandleDoubleClick(event: MouseEvent) {
     toggleMode();
 }
 
-function blockCompactResize(event: Event) {
-    if (!settings.store.compactMode) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-}
-
-function onHandleKeyDown(event: KeyboardEvent) {
-    if (!settings.store.compactMode) return;
-
-    if (event.key === "Enter" || event.key === " ") {
-        blockCompactResize(event);
-        toggleMode();
-        return;
-    }
-
-    if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") {
-        blockCompactResize(event);
-    }
-}
-
 function unbindResizeHandle() {
     if (!resizeHandle) return;
 
     resizeHandle.removeEventListener("dblclick", onHandleDoubleClick);
-    resizeHandle.removeEventListener("mousedown", blockCompactResize, true);
-    resizeHandle.removeEventListener("click", blockCompactResize, true);
-    resizeHandle.removeEventListener("keydown", onHandleKeyDown, true);
     resizeHandle = null;
 }
 
@@ -190,14 +167,7 @@ function bindResizeHandle(next: HTMLElement | null) {
 
     unbindResizeHandle();
     resizeHandle = next;
-    if (!resizeHandle) return;
-
-    // Leave Discord's native resize handle and styling intact. Compact mode only
-    // blocks its resize interaction; default mode remains fully native.
-    resizeHandle.addEventListener("dblclick", onHandleDoubleClick);
-    resizeHandle.addEventListener("mousedown", blockCompactResize, true);
-    resizeHandle.addEventListener("click", blockCompactResize, true);
-    resizeHandle.addEventListener("keydown", onHandleKeyDown, true);
+    resizeHandle?.addEventListener("dblclick", onHandleDoubleClick);
 }
 
 function disconnectParentObserver() {
@@ -207,15 +177,13 @@ function disconnectParentObserver() {
 
 function observeSidebarParent() {
     disconnectParentObserver();
-
-    const parent = sidebar?.parentElement;
-    if (!parent) return;
+    if (!sidebarRoot) return;
 
     parentObserver = new MutationObserver(() => {
         if (!sidebar?.isConnected || !resizeHandle?.isConnected) scheduleReconcile();
     });
 
-    parentObserver.observe(parent, {
+    parentObserver.observe(sidebarRoot, {
         childList: true,
         subtree: true
     });
@@ -230,7 +198,10 @@ function detachSidebar() {
         restoreInlineWidth(sidebar);
     }
 
+    if (sidebarRoot) delete sidebarRoot.dataset.vcCdmRoot;
+
     sidebar = null;
+    sidebarRoot = null;
     inlineWidth = null;
 }
 
@@ -238,6 +209,10 @@ function cleanupLegacyRuntime() {
     document.querySelector(".vc-cdm-toggle-edge")?.remove();
     document.querySelector(".vc-cdm-account-dock")?.remove();
     document.querySelector(".vc-cdm-controls-menu")?.remove();
+
+    document.querySelectorAll<HTMLElement>('[data-vc-cdm-root="compact"]').forEach(element => {
+        delete element.dataset.vcCdmRoot;
+    });
 
     const legacySidebar = document.querySelector<HTMLElement>('[data-vc-compact-dm-bar="true"]');
     if (legacySidebar) {
@@ -276,9 +251,10 @@ function reconcile() {
     if (sidebar !== nextSidebar) {
         detachSidebar();
         sidebar = nextSidebar;
+        sidebarRoot = nextSidebar.parentElement;
     }
 
-    const nextHandle = sidebar.parentElement?.querySelector<HTMLElement>(NATIVE_HANDLE_SELECTOR) ?? null;
+    const nextHandle = sidebarRoot?.querySelector<HTMLElement>(NATIVE_HANDLE_SELECTOR) ?? null;
     bindResizeHandle(nextHandle);
     applyMode();
     observeSidebarParent();
@@ -301,7 +277,7 @@ export default definePlugin({
             find: "#{intl::USER_PROFILE_ACCOUNT_POPOUT_BUTTON_A11Y_LABEL}",
             replacement: {
                 match: /children:\[(?=.{0,25}?accountContainerRef)/,
-                replace: "children:[$self.ControlsToggleButton(),"
+                replace: "children:[$self.ControlsToggleButton(arguments[0]),"
             }
         }
     ],
