@@ -6,7 +6,8 @@ import "./styles.css";
 
 import { definePluginSettings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
-import definePlugin, { OptionType, StartAt } from "@utils/types";
+import { getIntlMessage } from "@utils/discord";
+import definePlugin, { OptionType } from "@utils/types";
 import { findComponentByCodeLazy } from "@webpack";
 import { React, SelectedGuildStore } from "@webpack/common";
 
@@ -34,7 +35,6 @@ let sidebar: HTMLElement | null = null;
 let sidebarRoot: HTMLElement | null = null;
 let resizeHandle: HTMLElement | null = null;
 let parentObserver: MutationObserver | null = null;
-let animationFrame = 0;
 let inlineWidth: InlineWidthSnapshot | null = null;
 
 function ControlsIcon() {
@@ -73,14 +73,13 @@ const ControlsToggleButton = ErrorBoundary.wrap((props: { nameplate?: any; }) =>
         };
 
         const closeAfterSettings = (event: MouseEvent) => {
-            if (!(event.target instanceof Element) || !nativeButtons) return;
+            if (!(event.target instanceof Element)) return;
 
             const clickedButton = event.target.closest("button");
             if (
                 clickedButton
                 && clickedButton !== buttonRef.current
-                && clickedButton.parentElement === nativeButtons
-                && clickedButton === nativeButtons.lastElementChild
+                && clickedButton.getAttribute("aria-label") === getIntlMessage("USER_SETTINGS")
             ) {
                 setOpen(false);
             }
@@ -124,7 +123,6 @@ function snapshotInlineWidth(element: HTMLElement): InlineWidthSnapshot {
 
 function clearInlineWidth(element: HTMLElement) {
     for (const property of WIDTH_PROPERTIES) element.style.removeProperty(property);
-    element.style.removeProperty("--vc-compact-dm-width");
 }
 
 function restoreInlineWidth(element: HTMLElement) {
@@ -187,13 +185,10 @@ function observeSidebarParent() {
     if (!sidebarRoot) return;
 
     parentObserver = new MutationObserver(() => {
-        if (!sidebar?.isConnected || !resizeHandle?.isConnected) scheduleReconcile();
+        if (!sidebar?.isConnected || !resizeHandle?.isConnected) reconcile();
     });
 
-    parentObserver.observe(sidebarRoot, {
-        childList: true,
-        subtree: true
-    });
+    parentObserver.observe(sidebarRoot, { childList: true });
 }
 
 function detachSidebar() {
@@ -210,40 +205,7 @@ function detachSidebar() {
     inlineWidth = null;
 }
 
-function cleanupLegacyRuntime() {
-    document.querySelector(".vc-cdm-toggle-edge")?.remove();
-    document.querySelector(".vc-cdm-account-dock")?.remove();
-    document.querySelector(".vc-cdm-controls-menu")?.remove();
-
-    document.querySelectorAll<HTMLElement>('[data-vc-cdm-root="compact"]').forEach(element => {
-        delete element.dataset.vcCdmRoot;
-    });
-
-    const legacySidebar = document.querySelector<HTMLElement>('[data-vc-compact-dm-bar="true"]');
-    if (!legacySidebar) return;
-
-    delete legacySidebar.dataset.vcCompactDmBar;
-    delete legacySidebar.dataset.vcCompactDmExpanded;
-    legacySidebar.style.removeProperty("--vc-compact-dm-width");
-
-    for (const property of WIDTH_PROPERTIES) {
-        if (
-            legacySidebar.style.getPropertyPriority(property) === "important"
-            && legacySidebar.style.getPropertyValue(property) === "72px"
-        ) {
-            legacySidebar.style.removeProperty(property);
-        }
-    }
-
-    const parent = legacySidebar.parentElement;
-    parent?.querySelector<HTMLElement>(NATIVE_HANDLE_SELECTOR)?.style.removeProperty("pointer-events");
-    parent?.querySelector<HTMLElement>(NATIVE_HANDLE_SELECTOR)?.style.removeProperty("opacity");
-    parent?.querySelector<HTMLElement>(':scope > [class*="panels_"]')?.style.removeProperty("display");
-}
-
 function reconcile() {
-    animationFrame = 0;
-
     const nextSidebar = document.querySelector<HTMLElement>(SIDEBAR_SELECTOR);
     if (!nextSidebar) {
         detachSidebar();
@@ -259,10 +221,6 @@ function reconcile() {
     bindResizeHandle(sidebarRoot?.querySelector<HTMLElement>(NATIVE_HANDLE_SELECTOR) ?? null);
     applyMode();
     observeSidebarParent();
-}
-
-function scheduleReconcile() {
-    if (!animationFrame) animationFrame = requestAnimationFrame(reconcile);
 }
 
 export default definePlugin({
@@ -283,22 +241,14 @@ export default definePlugin({
     ],
 
     ControlsToggleButton,
-    startAt: StartAt.WebpackReady,
 
     start() {
-        cleanupLegacyRuntime();
-        SelectedGuildStore.addChangeListener(scheduleReconcile);
-        scheduleReconcile();
+        SelectedGuildStore.addChangeListener(reconcile);
+        reconcile();
     },
 
     stop() {
-        SelectedGuildStore.removeChangeListener(scheduleReconcile);
-
-        if (animationFrame) {
-            cancelAnimationFrame(animationFrame);
-            animationFrame = 0;
-        }
-
+        SelectedGuildStore.removeChangeListener(reconcile);
         detachSidebar();
     }
 });
