@@ -108,11 +108,7 @@ function snapshotInlineWidth(element: HTMLElement): InlineWidthSnapshot {
 }
 
 function clearInlineWidth(element: HTMLElement) {
-    for (const property of WIDTH_PROPERTIES) {
-        element.style.removeProperty(property);
-    }
-
-    // Removed by older CompactDMBar builds.
+    for (const property of WIDTH_PROPERTIES) element.style.removeProperty(property);
     element.style.removeProperty("--vc-compact-dm-width");
 }
 
@@ -121,7 +117,6 @@ function restoreInlineWidth(element: HTMLElement) {
 
     for (const property of WIDTH_PROPERTIES) {
         const { value, priority } = inlineWidth[property];
-
         if (value) element.style.setProperty(property, value, priority);
         else element.style.removeProperty(property);
     }
@@ -136,10 +131,8 @@ function applyMode() {
         if (!inlineWidth) inlineWidth = snapshotInlineWidth(sidebar);
         clearInlineWidth(sidebar);
         sidebar.dataset.vcCdmState = "compact";
-        if (sidebarRoot) sidebarRoot.dataset.vcCdmRoot = "compact";
     } else {
         delete sidebar.dataset.vcCdmState;
-        if (sidebarRoot) delete sidebarRoot.dataset.vcCdmRoot;
         restoreInlineWidth(sidebar);
     }
 }
@@ -157,7 +150,6 @@ function onHandleDoubleClick(event: MouseEvent) {
 
 function unbindResizeHandle() {
     if (!resizeHandle) return;
-
     resizeHandle.removeEventListener("dblclick", onHandleDoubleClick);
     resizeHandle = null;
 }
@@ -198,8 +190,6 @@ function detachSidebar() {
         restoreInlineWidth(sidebar);
     }
 
-    if (sidebarRoot) delete sidebarRoot.dataset.vcCdmRoot;
-
     sidebar = null;
     sidebarRoot = null;
     inlineWidth = null;
@@ -215,28 +205,25 @@ function cleanupLegacyRuntime() {
     });
 
     const legacySidebar = document.querySelector<HTMLElement>('[data-vc-compact-dm-bar="true"]');
-    if (legacySidebar) {
-        delete legacySidebar.dataset.vcCompactDmBar;
-        delete legacySidebar.dataset.vcCompactDmExpanded;
-        legacySidebar.style.removeProperty("--vc-compact-dm-width");
+    if (!legacySidebar) return;
 
-        for (const property of WIDTH_PROPERTIES) {
-            if (
-                legacySidebar.style.getPropertyPriority(property) === "important"
-                && legacySidebar.style.getPropertyValue(property) === "72px"
-            ) {
-                legacySidebar.style.removeProperty(property);
-            }
+    delete legacySidebar.dataset.vcCompactDmBar;
+    delete legacySidebar.dataset.vcCompactDmExpanded;
+    legacySidebar.style.removeProperty("--vc-compact-dm-width");
+
+    for (const property of WIDTH_PROPERTIES) {
+        if (
+            legacySidebar.style.getPropertyPriority(property) === "important"
+            && legacySidebar.style.getPropertyValue(property) === "72px"
+        ) {
+            legacySidebar.style.removeProperty(property);
         }
     }
 
-    const parent = legacySidebar?.parentElement;
-    const legacyHandle = parent?.querySelector<HTMLElement>(NATIVE_HANDLE_SELECTOR);
-    const legacyPanels = parent?.querySelector<HTMLElement>(':scope > [class*="panels_"]');
-
-    legacyHandle?.style.removeProperty("pointer-events");
-    legacyHandle?.style.removeProperty("opacity");
-    legacyPanels?.style.removeProperty("display");
+    const parent = legacySidebar.parentElement;
+    parent?.querySelector<HTMLElement>(NATIVE_HANDLE_SELECTOR)?.style.removeProperty("pointer-events");
+    parent?.querySelector<HTMLElement>(NATIVE_HANDLE_SELECTOR)?.style.removeProperty("opacity");
+    parent?.querySelector<HTMLElement>(':scope > [class*="panels_"]')?.style.removeProperty("display");
 }
 
 function reconcile() {
@@ -254,15 +241,13 @@ function reconcile() {
         sidebarRoot = nextSidebar.parentElement;
     }
 
-    const nextHandle = sidebarRoot?.querySelector<HTMLElement>(NATIVE_HANDLE_SELECTOR) ?? null;
-    bindResizeHandle(nextHandle);
+    bindResizeHandle(sidebarRoot?.querySelector<HTMLElement>(NATIVE_HANDLE_SELECTOR) ?? null);
     applyMode();
     observeSidebarParent();
 }
 
 function scheduleReconcile() {
-    if (animationFrame) return;
-    animationFrame = requestAnimationFrame(reconcile);
+    if (!animationFrame) animationFrame = requestAnimationFrame(reconcile);
 }
 
 export default definePlugin({
@@ -283,7 +268,6 @@ export default definePlugin({
     ],
 
     ControlsToggleButton,
-
     startAt: StartAt.WebpackReady,
 
     start() {

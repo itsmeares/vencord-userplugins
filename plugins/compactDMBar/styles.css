@@ -129,13 +129,10 @@
     mask-image: none;
 }
 
-/* Native account panel */
+/* Native account panel. It is targeted as a sibling of the compact DM rail so
+ * the guild/server list keeps Discord's own layout and clipping untouched. */
 
-[data-vc-cdm-root="compact"] {
-    overflow: visible;
-}
-
-[data-vc-cdm-root="compact"] > [class*="panels_"] {
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] {
     left: var(--vc-cdm-server-rail-width);
     right: auto;
     bottom: 0;
@@ -148,11 +145,11 @@
     box-shadow: none;
 }
 
-[data-vc-cdm-root="compact"] > [class*="panels_"] > [class*="wrapper_"] {
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] > [class*="wrapper_"] {
     display: none;
 }
 
-[data-vc-cdm-root="compact"] > [class*="panels_"] > [class*="container_"]:has(> [class*="accountPopoutButtonWrapper_"]) {
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] > [class*="container_"]:has(> [class*="accountPopoutButtonWrapper_"]) {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -173,12 +170,12 @@
     box-shadow: none;
 }
 
-[data-vc-cdm-root="compact"] > [class*="panels_"] > [class*="container_"]:has(> [class*="accountPopoutButtonWrapper_"]) > [class*="container_"][class*="fitInAccount_"],
-[data-vc-cdm-root="compact"] [class*="accountPopoutButtonWrapper_"] [class*="nameTag_"] {
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] > [class*="container_"]:has(> [class*="accountPopoutButtonWrapper_"]) > [class*="container_"][class*="fitInAccount_"],
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="accountPopoutButtonWrapper_"] [class*="nameTag_"] {
     display: none;
 }
 
-[data-vc-cdm-root="compact"] [class*="accountPopoutButtonWrapper_"] {
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="accountPopoutButtonWrapper_"] {
     box-sizing: border-box;
     order: 1;
     flex: 0 0 auto;
@@ -194,18 +191,20 @@
     border-radius: 50%;
 }
 
-[data-vc-cdm-root="compact"] [class*="accountPopoutButtonWrapper_"] [class*="avatar_"] {
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="accountPopoutButtonWrapper_"] [class*="avatar_"] {
     flex: 0 0 auto;
     margin: 0;
 }
 
-/* The account-panel patch inserts this native-styled button into Discord's
- * real buttons container, so the container itself becomes the compact row. */
+/* The Vencord-style React patch inserts our toggle into Discord's existing
+ * account-buttons row. Closed, only that toggle is visible. Open, the same
+ * native row expands to reveal every existing Discord/Vencord account action. */
 
-[data-vc-cdm-root="compact"] > [class*="panels_"] > [class*="container_"]:has(> [class*="accountPopoutButtonWrapper_"]) > [class*="buttons_"] {
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] > [class*="container_"]:has(> [class*="accountPopoutButtonWrapper_"]) > [class*="buttons_"] {
     position: relative;
     order: 2;
     align-self: flex-start;
+    z-index: 2;
     box-sizing: border-box;
     display: flex;
     align-items: center;
@@ -220,7 +219,7 @@
     overflow: visible;
     background: transparent;
     border: 0;
-    border-radius: 0;
+    border-radius: 10px;
     box-shadow: none;
 }
 
@@ -242,54 +241,45 @@
     height: 20px;
 }
 
-/* Keep every existing Discord/Vencord account action mounted, but collapse
- * everything except the compact toggle until the user opens the row. */
-[data-vc-cdm-root="compact"] [class*="buttons_"] > :not(.vc-cdm-controls-toggle) {
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="buttons_"] > :not(.vc-cdm-controls-toggle) {
     display: none;
 }
 
-[data-vc-cdm-root="compact"] [class*="buttons_"]:has(.vc-cdm-controls-open) {
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="buttons_"]:has(.vc-cdm-controls-open) {
     width: max-content;
-}
-
-[data-vc-cdm-root="compact"] [class*="buttons_"]:has(.vc-cdm-controls-open)::before {
-    content: "";
-    position: absolute;
-    z-index: -1;
-    left: 48px;
-    right: -5px;
-    top: -6px;
-    bottom: -6px;
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, .10));
-    border-radius: 11px;
+    height: 34px;
+    padding-right: 4px;
     background: var(--background-floating, #111214);
+    border-radius: 10px;
     box-shadow: var(--elevation-high, 0 8px 24px rgba(0, 0, 0, .4));
 }
 
-[data-vc-cdm-root="compact"] [class*="buttons_"]:has(.vc-cdm-controls-open) > .vc-cdm-controls-toggle {
-    margin-right: 9px;
-}
-
-[data-vc-cdm-root="compact"] [class*="buttons_"]:has(.vc-cdm-controls-open) > :not(.vc-cdm-controls-toggle) {
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="buttons_"]:has(.vc-cdm-controls-open) > :not(.vc-cdm-controls-toggle) {
     display: flex;
     flex: 0 0 auto;
 }
 
-[data-vc-cdm-root="compact"] [class*="buttons_"] [class*="buttonChevron_"] {
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="buttons_"] [class*="buttonChevron_"] {
     display: none;
 }
 
-[data-vc-cdm-root="compact"] [class*="buttons_"] > [class*="audioButtonParent_"] {
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="buttons_"] > [class*="audioButtonParent_"] {
     width: 34px;
     height: 34px;
 }
 
-[data-vc-cdm-root="compact"] [class*="buttons_"] [class*="audioButtonWithMenu_"],
-[data-vc-cdm-root="compact"] [class*="buttons_"] > button:not(.vc-cdm-controls-toggle) {
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="buttons_"] [class*="audioButtonWithMenu_"],
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="buttons_"] > button:not(.vc-cdm-controls-toggle) {
     width: 34px;
     min-width: 34px;
     max-width: 34px;
     height: 34px;
     padding: 0;
     border-radius: 8px;
+}
+
+/* Only the open controls row needs to escape the native sidebar clip. Keep the
+ * sidebar root completely native at all other times. */
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"] ~ [class*="panels_"] .vc-cdm-controls-open) {
+    overflow: visible;
 }
