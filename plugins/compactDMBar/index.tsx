@@ -61,10 +61,25 @@ const ControlsToggleButton = ErrorBoundary.wrap((props: { nameplate?: any; }) =>
         if (!open) return;
 
         const nativeButtons = buttonRef.current?.parentElement;
+        const nativePanels = nativeButtons?.closest<HTMLElement>('[class*="panels_"]');
 
         const closeOutside = (event: PointerEvent) => {
             if (!(event.target instanceof Node)) return;
             if (nativeButtons?.contains(event.target)) return;
+
+            const target = event.target instanceof Element ? event.target : event.target.parentElement;
+            if (target && nativePanels?.contains(target)) {
+                const voicePanel = target.closest('[class*="wrapper_"]');
+                const activityPanel = target.closest('[class*="activityPanel_"]');
+
+                if (
+                    activityPanel
+                    || (voicePanel && voicePanel.querySelector('[class*="connection_"]'))
+                ) {
+                    return;
+                }
+            }
+
             setOpen(false);
         };
 
