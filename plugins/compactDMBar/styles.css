@@ -3,6 +3,7 @@
 :root {
     --vc-cdm-width: 72px;
     --vc-cdm-server-rail-width: 64px;
+    --vc-cdm-window-width: 293px;
 }
 
 /* Compact DM rail */
@@ -140,6 +141,8 @@ nav[class*="guilds_"]:has(+ [data-vc-cdm-state="compact"]) {
  * the guild/server list keeps Discord's own layout and clipping untouched. */
 
 [data-vc-cdm-state="compact"] ~ [class*="panels_"] {
+    --vc-cdm-window-left: 60px;
+
     left: var(--vc-cdm-server-rail-width);
     right: auto;
     bottom: 0;
@@ -152,7 +155,10 @@ nav[class*="guilds_"]:has(+ [data-vc-cdm-state="compact"]) {
     box-shadow: none;
 }
 
-[data-vc-cdm-state="compact"] ~ [class*="panels_"] > [class*="wrapper_"] {
+/* Voice/activity content stays out of the 72px rail while the controls window
+ * is closed. The same native Discord nodes are revealed when it opens. */
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] > [class*="activityPanel_"],
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] > [class*="wrapper_"]:has([class*="connection_"]) {
     display: none;
 }
 
@@ -203,9 +209,9 @@ nav[class*="guilds_"]:has(+ [data-vc-cdm-state="compact"]) {
     margin: 0;
 }
 
-/* The Vencord-style React patch inserts our toggle into Discord's existing
- * account-buttons row. Closed, only that toggle is visible. Open, the same
- * native row expands to reveal every existing Discord/Vencord account action. */
+/* The React patch inserts the compact toggle into Discord's existing account
+ * buttons row. The toggle remains in the rail while native controls overflow
+ * into the unified floating window. */
 
 [data-vc-cdm-state="compact"] ~ [class*="panels_"] > [class*="container_"]:has(> [class*="accountPopoutButtonWrapper_"]) > [class*="buttons_"] {
     position: relative;
@@ -252,18 +258,44 @@ nav[class*="guilds_"]:has(+ [data-vc-cdm-state="compact"]) {
     display: none;
 }
 
-[data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="buttons_"]:has(.vc-cdm-controls-open) {
-    width: max-content;
-    height: 34px;
-    padding-right: 4px;
-    background: var(--background-floating, #111214);
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] > [class*="container_"]:has(> [class*="accountPopoutButtonWrapper_"]) > [class*="buttons_"]:has(.vc-cdm-controls-open) {
+    gap: 6px;
+    width: 40px;
+    min-width: 40px;
+    height: 32px;
+    padding: 0;
+    background: transparent;
+    border: 0;
     border-radius: 10px;
-    box-shadow: var(--elevation-high, 0 8px 24px rgba(0, 0, 0, .4));
+    box-shadow: none;
+}
+
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] > [class*="container_"]:has(> [class*="accountPopoutButtonWrapper_"]) > [class*="buttons_"]:has(.vc-cdm-controls-open)::before {
+    content: "";
+    position: absolute;
+    left: 44px;
+    top: -7px;
+    z-index: 0;
+    box-sizing: border-box;
+    width: var(--vc-cdm-window-width);
+    height: 48px;
+    pointer-events: none;
+    background: var(--background-floating, #111214);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, .08));
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, .24);
 }
 
 [data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="buttons_"]:has(.vc-cdm-controls-open) > :not(.vc-cdm-controls-toggle) {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex: 0 0 auto;
+    align-self: center;
+}
+
+[data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="buttons_"]:has(.vc-cdm-controls-open) > .vc-cdm-controls-toggle + * {
+    margin-left: 10px;
 }
 
 [data-vc-cdm-state="compact"] ~ [class*="panels_"] [class*="buttons_"] [class*="buttonChevron_"] {
@@ -285,8 +317,95 @@ nav[class*="guilds_"]:has(+ [data-vc-cdm-state="compact"]) {
     border-radius: 8px;
 }
 
-/* Only the open controls row needs to escape the native sidebar clip. Keep the
- * sidebar root completely native at all other times. */
+/* Native voice/activity content joins the same floating surface when Audio &
+ * Settings is open. No nodes are cloned or moved. */
+
+[data-vc-cdm-state="compact"] ~ [class*="panels_"]:has(.vc-cdm-controls-open) > [class*="wrapper_"]:has([class*="connection_"]) {
+    display: block;
+    position: absolute;
+    left: var(--vc-cdm-window-left);
+    bottom: 48px;
+    z-index: 20;
+    box-sizing: border-box;
+    width: var(--vc-cdm-window-width);
+    height: auto;
+    margin: 0;
+    overflow: hidden;
+    background: var(--background-floating, #111214);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, .08));
+    border-bottom: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+[data-vc-cdm-state="compact"] ~ [class*="panels_"]:has(.vc-cdm-controls-open) > [class*="wrapper_"]:has([class*="connection_"]) > [class*="container_"] {
+    box-sizing: border-box;
+    width: var(--vc-cdm-window-width);
+    min-width: var(--vc-cdm-window-width);
+    max-width: var(--vc-cdm-window-width);
+    height: auto;
+    margin: 0;
+}
+
+[data-vc-cdm-state="compact"] ~ [class*="panels_"]:has(.vc-cdm-controls-open) > [class*="wrapper_"]:has([class*="connection_"]) [class*="connection_"] {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 8px 10px 4px;
+}
+
+[data-vc-cdm-state="compact"] ~ [class*="panels_"]:has(.vc-cdm-controls-open) > [class*="wrapper_"]:has([class*="connection_"]) [class*="actionButtons_"] {
+    box-sizing: border-box;
+    width: 100%;
+    gap: 6px;
+    padding: 4px 10px 10px;
+    background: var(--background-floating, #111214);
+    border: 0;
+}
+
+[data-vc-cdm-state="compact"] ~ [class*="panels_"]:has(.vc-cdm-controls-open) [class*="voiceButtonsContainer_"] {
+    gap: 4px;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+}
+
+[data-vc-cdm-state="compact"] ~ [class*="panels_"]:has(.vc-cdm-controls-open) > [class*="activityPanel_"] {
+    display: block;
+    position: absolute;
+    left: var(--vc-cdm-window-left);
+    bottom: 149px;
+    z-index: 21;
+    box-sizing: border-box;
+    width: var(--vc-cdm-window-width);
+    min-width: var(--vc-cdm-window-width);
+    max-width: var(--vc-cdm-window-width);
+    margin: 0;
+    overflow: hidden;
+    background: var(--background-floating, #111214);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, .08));
+    border-bottom: 0;
+    border-radius: 10px 10px 0 0;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, .24);
+}
+
+[data-vc-cdm-state="compact"] ~ [class*="panels_"]:has(.vc-cdm-controls-open) > [class*="activityPanel_"] > [class*="body_"] {
+    box-sizing: border-box;
+    width: 100%;
+}
+
+[data-vc-cdm-state="compact"] ~ [class*="panels_"]:has(.vc-cdm-controls-open):not(:has(> [class*="activityPanel_"])) > [class*="wrapper_"]:has([class*="connection_"]) {
+    border-radius: 10px 10px 0 0;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, .24);
+}
+
+[data-vc-cdm-state="compact"] ~ [class*="panels_"]:has(.vc-cdm-controls-open):not(:has(> [class*="wrapper_"]:has([class*="connection_"]))) > [class*="activityPanel_"] {
+    bottom: 48px;
+}
+
+/* Only the open controls window needs to escape the native sidebar clip. Keep
+ * the sidebar root completely native at all other times. */
 [class*="sidebar_"]:has(> [data-vc-cdm-state="compact"] ~ [class*="panels_"] .vc-cdm-controls-open) {
     overflow: visible;
 }
