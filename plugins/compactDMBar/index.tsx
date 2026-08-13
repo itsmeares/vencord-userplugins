@@ -60,12 +60,11 @@ const ControlsToggleButton = ErrorBoundary.wrap((props: { nameplate?: any; }) =>
     React.useEffect(() => {
         if (!open) return;
 
+        const nativeButtons = buttonRef.current?.parentElement;
+
         const closeOutside = (event: PointerEvent) => {
             if (!(event.target instanceof Node)) return;
-
-            const nativeButtons = buttonRef.current?.parentElement;
             if (nativeButtons?.contains(event.target)) return;
-
             setOpen(false);
         };
 
@@ -73,12 +72,28 @@ const ControlsToggleButton = ErrorBoundary.wrap((props: { nameplate?: any; }) =>
             if (event.key === "Escape") setOpen(false);
         };
 
+        const closeAfterSettings = (event: MouseEvent) => {
+            if (!(event.target instanceof Element) || !nativeButtons) return;
+
+            const clickedButton = event.target.closest("button");
+            if (
+                clickedButton
+                && clickedButton !== buttonRef.current
+                && clickedButton.parentElement === nativeButtons
+                && clickedButton === nativeButtons.lastElementChild
+            ) {
+                setOpen(false);
+            }
+        };
+
         document.addEventListener("pointerdown", closeOutside, true);
         document.addEventListener("keydown", closeOnEscape, true);
+        nativeButtons?.addEventListener("click", closeAfterSettings);
 
         return () => {
             document.removeEventListener("pointerdown", closeOutside, true);
             document.removeEventListener("keydown", closeOnEscape, true);
+            nativeButtons?.removeEventListener("click", closeAfterSettings);
         };
     }, [open]);
 

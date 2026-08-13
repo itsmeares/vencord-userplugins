@@ -17,6 +17,13 @@
     container-type: normal;
 }
 
+/* Discord reserves the bottom of the guild rail for the global account panel.
+ * CompactDMBar moves that panel to the DM rail, so the guild list can use the
+ * full height again while compact. */
+nav[class*="guilds_"]:has(+ [data-vc-cdm-state="compact"]) {
+    margin-bottom: 0;
+}
+
 [data-vc-cdm-state="compact"] [class*="privateChannels_"] {
     width: 100%;
     min-width: 0;
