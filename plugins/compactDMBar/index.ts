@@ -4,11 +4,21 @@
 
 import "./styles.css";
 
-import definePlugin from "@utils/types";
+import { definePluginSettings } from "@api/Settings";
+import definePlugin, { OptionType } from "@utils/types";
+import { MediaEngineStore } from "@webpack/common";
 
-const MODE_STORAGE_KEY = "vc-compact-dm-bar:mode:v1";
 const COMPACT_WIDTH = 72;
 const SIDEBAR_SELECTOR = '#app-mount [class*="sidebarList_"]:has([class*="privateChannels_"])';
+
+const settings = definePluginSettings({
+    compactMode: {
+        type: OptionType.BOOLEAN,
+        description: "Remember whether the direct-message sidebar is compact or default width",
+        default: true,
+        hidden: true
+    }
+});
 
 let running = false;
 let observer: MutationObserver | null = null;
@@ -27,19 +37,11 @@ let hiddenNativePanels: {
 } | null = null;
 
 function readStoredMode() {
-    try {
-        return localStorage.getItem(MODE_STORAGE_KEY) !== "default";
-    } catch {
-        return true;
-    }
+    return settings.store.compactMode;
 }
 
 function persistMode() {
-    try {
-        localStorage.setItem(MODE_STORAGE_KEY, compactMode ? "compact" : "default");
-    } catch (error) {
-        console.warn("[CompactDMBar] Failed to persist compact mode", error);
-    }
+    settings.store.compactMode = compactMode;
 }
 
 function getNativePanels() {
@@ -155,9 +157,11 @@ function syncControlsMenuPosition() {
     const trigger = accountDock.querySelector<HTMLElement>(".vc-cdm-controls-button");
     if (!trigger) return;
 
-    const rect = trigger.getBoundingClientRect();
-    controlsMenu.style.left = `${Math.round(rect.right + 8)}px`;
-    controlsMenu.style.bottom = `${Math.round(window.innerHeight - rect.bottom)}px`;
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = controlsMenu.getBoundingClientRect();
+    controlsMenu.style.left = `${Math.round(triggerRect.right + 8)}px`;
+    controlsMenu.style.top = `${Math.round(triggerRect.top + triggerRect.height / 2 - menuRect.height / 2)}px`;
+    controlsMenu.style.removeProperty("bottom");
 }
 
 function setControlsOpen(open: boolean) {
@@ -271,6 +275,15 @@ function getNeutralControlColor() {
     return settingsButton ? getComputedStyle(settingsButton).color : null;
 }
 
+function getControlActiveState(kind: ControlKind) {
+    if (kind === "settings") return false;
+
+    const mediaSettings = MediaEngineStore?.getSettings?.();
+    if (!mediaSettings) return false;
+
+    return kind === "mute" ? !!mediaSettings.mute : !!mediaSettings.deaf;
+}
+
 function cloneNativeControlVisual(nativeButton: HTMLButtonElement, target: HTMLButtonElement) {
     const visual = nativeButton.querySelector<HTMLElement>("svg")
         ?? nativeButton.firstElementChild as HTMLElement | null;
@@ -300,6 +313,7 @@ function syncControlAction(button: HTMLButtonElement) {
     const label = nativeButton.getAttribute("aria-label") ?? CONTROL_LABELS[kind][0];
     button.title = label;
     button.setAttribute("aria-label", label);
+    button.dataset.vcActive = String(getControlActiveState(kind));
     cloneNativeControlVisual(nativeButton, button);
 }
 
@@ -320,8 +334,12 @@ function createControlAction(kind: ControlKind) {
         const nativeButton = getNativeControlButton(...CONTROL_LABELS[kind]);
         nativeButton?.click();
 
-        // Keep the compact controls open. Discord may replace the native icon
-        // after toggling mute/deafen, so refresh the cloned visual on the next tick.
+        if (kind === "settings") {
+            setControlsOpen(false);
+            return;
+        }
+
+        // Keep the compact controls open and refresh state-driven icon paint.
         window.setTimeout(() => {
             if (controlsOpen) refreshControlActions();
         }, 50);
@@ -483,6 +501,7 @@ export default definePlugin({
     description: "Toggles the Home/Friends direct-message sidebar between Discord's default layout and a compact icon-only rail.",
     tags: ["Appearance", "Friends"],
     authors: [{ name: "itsmeares", id: 0n }],
+    settings,
 
     start() {
         running = true;
