@@ -217,7 +217,7 @@
     width: 40px;
     height: 32px;
     border-radius: 10px;
-    background: var(--background-mod-subtle, rgba(255, 255, 255, .06));
+    background: transparent;
     transform: translateY(-3px);
 }
 
@@ -239,6 +239,37 @@
     max-width: 20px;
     max-height: 20px;
     pointer-events: none;
+}
+
+/* Discord's animated account controls use hard-coded Lottie paint values. */
+.vc-cdm-control-action svg > path,
+.vc-cdm-control-action svg > g path,
+.vc-cdm-control-action svg > g rect {
+    fill: var(--text-muted) !important;
+}
+
+.vc-cdm-control-action svg > g path[stroke]:not([stroke="none"]),
+.vc-cdm-control-action svg > path[stroke]:not([stroke="none"]) {
+    stroke: var(--text-muted) !important;
+}
+
+.vc-cdm-control-action[data-vc-active="true"] svg > path,
+.vc-cdm-control-action[data-vc-active="true"] svg > g path,
+.vc-cdm-control-action[data-vc-active="true"] svg > g rect {
+    fill: var(--status-danger) !important;
+}
+
+.vc-cdm-control-action[data-vc-active="true"] svg > g path[stroke]:not([stroke="none"]),
+.vc-cdm-control-action[data-vc-active="true"] svg > path[stroke]:not([stroke="none"]) {
+    stroke: var(--status-danger) !important;
+}
+
+.vc-cdm-control-action svg [fill="none"] {
+    fill: none !important;
+}
+
+.vc-cdm-control-action svg [stroke="none"] {
+    stroke: none !important;
 }
 
 .vc-cdm-profile-button:focus-visible,
