@@ -31,6 +31,13 @@ let controlsMenu: HTMLDivElement | null = null;
 let compactMode = true;
 let controlsOpen = false;
 let avatarSignature = "";
+let profilePopoutObserver: MutationObserver | null = null;
+let profilePopoutAnimationFrame = 0;
+let positionedProfilePopout: {
+    element: HTMLElement;
+    translate: string;
+    priority: string;
+} | null = null;
 let hiddenNativePanels: {
     element: HTMLElement;
     display: string;
@@ -262,6 +269,139 @@ function refreshProfileButton(profileButton: HTMLButtonElement) {
     }
 }
 
+function restoreProfilePopoutPosition() {
+    if (!positionedProfilePopout) return;
+
+    const { element, translate, priority } = positionedProfilePopout;
+    if (element.isConnected) {
+        if (translate) element.style.setProperty("translate", translate, priority);
+        else element.style.removeProperty("translate");
+    }
+
+    positionedProfilePopout = null;
+}
+
+function stopProfilePopoutTracking(restorePosition = false) {
+    profilePopoutObserver?.disconnect();
+    profilePopoutObserver = null;
+
+    if (profilePopoutAnimationFrame) {
+        cancelAnimationFrame(profilePopoutAnimationFrame);
+        profilePopoutAnimationFrame = 0;
+    }
+
+    if (restorePosition) restoreProfilePopoutPosition();
+    else if (positionedProfilePopout && !positionedProfilePopout.element.isConnected) positionedProfilePopout = null;
+}
+
+function getProfilePopoutCandidate() {
+    const candidates = Array.from(document.querySelectorAll<HTMLElement>("body div")).filter(element => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width < 280 || rect.width > 700 || rect.height < 300 || rect.height > 800) return false;
+
+        const style = getComputedStyle(element);
+        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+
+        return true;
+    });
+
+    const byArea = (a: HTMLElement, b: HTMLElement) => {
+        const aRect = a.getBoundingClientRect();
+        const bRect = b.getBoundingClientRect();
+        return aRect.width * aRect.height - bRect.width * bRect.height;
+    };
+
+    const accountTextMatch = candidates
+        .filter(element => {
+            const text = element.textContent ?? "";
+            return text.includes("Edit Profile") && text.includes("Switch Accounts");
+        })
+        .sort(byArea)[0];
+
+    if (accountTextMatch) return accountTextMatch;
+
+    return candidates
+        .filter(element => {
+            const className = element.className;
+            return element.getAttribute("role") === "dialog"
+                || (typeof className === "string" && /(?:user|profile).*popout|popout.*(?:user|profile)/i.test(className));
+        })
+        .sort(byArea)[0]
+        ?? null;
+}
+
+function positionProfilePopout(profileButton: HTMLButtonElement) {
+    const popout = getProfilePopoutCandidate();
+    if (!popout) return false;
+
+    if (positionedProfilePopout?.element !== popout) {
+        restoreProfilePopoutPosition();
+        positionedProfilePopout = {
+            element: popout,
+            translate: popout.style.getPropertyValue("translate"),
+            priority: popout.style.getPropertyPriority("translate")
+        };
+    }
+
+    const originalTranslate = positionedProfilePopout.translate;
+    const originalPriority = positionedProfilePopout.priority;
+    if (originalTranslate) popout.style.setProperty("translate", originalTranslate, originalPriority);
+    else popout.style.removeProperty("translate");
+
+    const buttonRect = profileButton.getBoundingClientRect();
+    const popoutRect = popout.getBoundingClientRect();
+    const desiredLeft = Math.max(8, Math.min(buttonRect.right + 10, window.innerWidth - popoutRect.width - 8));
+    const desiredTop = Math.max(8, Math.min(buttonRect.bottom - popoutRect.height, window.innerHeight - popoutRect.height - 8));
+
+    popout.style.setProperty(
+        "translate",
+        `${Math.round(desiredLeft - popoutRect.left)}px ${Math.round(desiredTop - popoutRect.top)}px`,
+        "important"
+    );
+
+    return true;
+}
+
+function positionProfilePopoutWhenMounted(profileButton: HTMLButtonElement) {
+    stopProfilePopoutTracking(false);
+
+    let attempts = 0;
+    const attemptPosition = () => {
+        profilePopoutAnimationFrame = 0;
+
+        if (!running || !compactMode || !profileButton.isConnected) {
+            profilePopoutObserver?.disconnect();
+            profilePopoutObserver = null;
+            return;
+        }
+
+        if (positionProfilePopout(profileButton)) {
+            profilePopoutObserver?.disconnect();
+            profilePopoutObserver = null;
+            return;
+        }
+
+        attempts += 1;
+        if (attempts >= 24) {
+            profilePopoutObserver?.disconnect();
+            profilePopoutObserver = null;
+            return;
+        }
+
+        profilePopoutAnimationFrame = requestAnimationFrame(attemptPosition);
+    };
+
+    profilePopoutObserver = new MutationObserver(() => {
+        if (!profilePopoutAnimationFrame) profilePopoutAnimationFrame = requestAnimationFrame(attemptPosition);
+    });
+    profilePopoutObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    profilePopoutAnimationFrame = requestAnimationFrame(attemptPosition);
+}
+
 type ControlKind = "mute" | "deafen" | "settings";
 
 const CONTROL_LABELS: Record<ControlKind, string[]> = {
@@ -383,9 +523,11 @@ function createAccountDock() {
     profileButton.type = "button";
     profileButton.setAttribute("aria-label", "Open profile");
     profileButton.addEventListener("click", event => {
+        event.preventDefault();
         event.stopPropagation();
         getNativeProfileButton()?.click();
         setControlsOpen(false);
+        positionProfilePopoutWhenMounted(profileButton);
     });
 
     const controlsButton = document.createElement("button");
@@ -438,6 +580,7 @@ function refreshDock() {
 
 function detachSidebar() {
     setControlsOpen(false);
+    stopProfilePopoutTracking(true);
 
     accountDock?.remove();
     accountDock = null;
