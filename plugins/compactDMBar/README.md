@@ -4,16 +4,15 @@ Compacts Discord's Home/Friends direct-message sidebar into a server-list-style 
 
 ## Behaviour
 
-- compact width is 72 px, with 40 px DM avatars centered inside 56 px rows;
-- search is replaced visually by a magnifying-glass icon while preserving Discord's native search click target;
+- compact width is 72 px, with 40 px DM avatars centered inside compact rows;
+- search is replaced visually by a magnifying-glass icon while preserving Discord's native search target;
 - top Home navigation entries and DM rows become icon/avatar-only in compact mode;
 - the Direct Messages heading, row text/details, close buttons and scrollbar are hidden in compact mode;
-- the bottom account area becomes two compact controls: a profile/avatar button and an expandable audio/settings button that proxies Discord's native controls;
-- the right edge can be dragged between 72 px and 360 px;
-- dragging below 200 px snaps directly to the 72 px compact rail instead of leaving a narrow text layout;
-- dragging back past 200 px restores Discord's normal labels/layout and native account panel;
-- double-clicking the resize handle toggles compact/last-expanded width;
-- the current width and last expanded width persist through Vencord's DataStore;
-- keyboard users can focus the resize handle and use Left/Right, Home/End, or Enter/Space.
+- Discord's native account avatar/profile control stays mounted and anchors the native profile popout;
+- a single native-styled compact toggle reveals Discord's real mute, deafen and settings buttons instead of cloning or proxying them;
+- Discord's native sidebar resize handle stays visible and keeps its native styling;
+- double-clicking the native handle toggles compact/default mode;
+- sidebar resizing is blocked only while compact; default mode keeps Discord's normal resize behaviour;
+- the compact/default choice persists through Vencord settings.
 
-The plugin deliberately reuses Discord's existing navigation, avatar, account-menu, mute/deafen and settings actions rather than reimplementing those behaviours. Discord UI class modules change over time, so runtime DOM discovery uses semantic class-name fragments instead of fixed hash suffixes where possible.
+The plugin deliberately keeps Discord's existing navigation, account profile flow and account actions mounted. Runtime DOM work is limited to locating the Home/Friends sidebar and its native resize handle; Discord's account controls are integrated through the same account-panel React patch pattern used by Vencord's built-in plugins.
