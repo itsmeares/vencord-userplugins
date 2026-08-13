@@ -1,89 +1,65 @@
-/* CompactDMBar only touches Discord's Home/Friends direct-message sidebar. */
+/* CompactDMBar only changes Discord's Home/Friends direct-message sidebar. */
 
 :root {
-    --vc-cdm-compact-width: 72px;
+    --vc-cdm-width: 72px;
+    --vc-cdm-server-rail-width: 64px;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"] {
+/* Compact DM rail */
+
+[data-vc-cdm-state="compact"] {
     position: relative;
+    width: var(--vc-cdm-width);
+    min-width: var(--vc-cdm-width);
+    max-width: var(--vc-cdm-width);
+    flex-basis: var(--vc-cdm-width);
     overflow: visible;
     container-type: normal;
 }
 
-/* ------------------------------------------------------------------------- */
-/* Invisible Compact / Default toggle edge                                   */
-/* ------------------------------------------------------------------------- */
-
-.vc-cdm-toggle-edge {
-    position: fixed;
-    z-index: 1000000;
-    width: 8px;
-    background: transparent;
-    cursor: col-resize;
-    touch-action: none;
-    user-select: none;
-    outline: none;
-}
-
-.vc-cdm-toggle-edge:focus-visible {
-    background: color-mix(in srgb, var(--text-muted, #b5bac1) 18%, transparent);
-}
-
-/* ------------------------------------------------------------------------- */
-/* Compact state                                                             */
-/* ------------------------------------------------------------------------- */
-
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] {
-    width: var(--vc-cdm-compact-width) !important;
-    min-width: var(--vc-cdm-compact-width) !important;
-    max-width: var(--vc-cdm-compact-width) !important;
-    flex-basis: var(--vc-cdm-compact-width) !important;
-}
-
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] {
+[data-vc-cdm-state="compact"] [class*="privateChannels_"] {
     width: 100%;
     min-width: 0;
     overflow: hidden;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="scroller_"] {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    padding-bottom: 104px !important;
+[data-vc-cdm-state="compact"] [class*="privateChannels_"] [class*="scroller_"] {
+    padding-inline: 0;
+    padding-bottom: 104px;
     scrollbar-width: none;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="scroller_"]::-webkit-scrollbar {
+[data-vc-cdm-state="compact"] [class*="privateChannels_"] [class*="scroller_"]::-webkit-scrollbar {
     width: 0;
     height: 0;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="searchBar_"] {
-    display: flex !important;
-    justify-content: center !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    padding: 8px 0 !important;
+[data-vc-cdm-state="compact"] [class*="searchBar_"] {
     box-sizing: border-box;
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    padding: 8px 0;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="searchBar_"] > button {
+[data-vc-cdm-state="compact"] [class*="searchBar_"] > button {
     position: relative;
-    display: grid !important;
-    place-items: center !important;
-    width: 40px !important;
-    min-width: 40px !important;
-    max-width: 40px !important;
-    height: 36px !important;
-    padding: 0 !important;
-    border-radius: 11px !important;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    height: 36px;
+    padding: 0;
+    border-radius: 11px;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="searchBar_"] > button > * {
-    display: none !important;
+[data-vc-cdm-state="compact"] [class*="searchBar_"] > button > * {
+    display: none;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="searchBar_"] > button::after {
+[data-vc-cdm-state="compact"] [class*="searchBar_"] > button::after {
     content: "";
     width: 18px;
     height: 18px;
@@ -92,200 +68,160 @@
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10.5 3a7.5 7.5 0 1 0 4.69 13.35L20.84 22 22 20.84l-5.65-5.65A7.5 7.5 0 0 0 10.5 3Zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannelsHeaderContainer_"] {
-    display: none !important;
+[data-vc-cdm-state="compact"] [class*="privateChannelsHeaderContainer_"] {
+    display: none;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] {
-    width: 48px !important;
-    min-width: 48px !important;
-    max-width: 48px !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
+[data-vc-cdm-state="compact"] [class*="privateChannels_"] [class*="channel_"] {
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    margin-inline: auto;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] > [class*="interactive_"] {
-    width: 40px !important;
-    min-width: 40px !important;
-    max-width: 40px !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-    border-radius: 12px !important;
+[data-vc-cdm-state="compact"] [class*="privateChannels_"] [class*="channel_"] > [class*="interactive_"] {
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    margin-inline: auto;
+    border-radius: 12px;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="link_"] {
-    box-sizing: border-box !important;
-    width: 40px !important;
-    min-width: 40px !important;
-    max-width: 40px !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
+[data-vc-cdm-state="compact"] [class*="privateChannels_"] [class*="channel_"] :is(
+    [class*="link_"],
+    [class*="layout_"]
+) {
+    box-sizing: border-box;
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    padding-inline: 0;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="layout_"] {
-    box-sizing: border-box !important;
-    width: 40px !important;
-    min-width: 40px !important;
-    max-width: 40px !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 0 !important;
+[data-vc-cdm-state="compact"] [class*="privateChannels_"] [class*="channel_"] [class*="layout_"] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="layout_"] > [class*="content_"],
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="nameAndDecorators_"],
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="subtext_"],
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="linkButtonSubtext_"],
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="closeButton_"] {
-    display: none !important;
+[data-vc-cdm-state="compact"] [class*="privateChannels_"] :is(
+    [class*="layout_"] > [class*="content_"],
+    [class*="nameAndDecorators_"],
+    [class*="subtext_"],
+    [class*="linkButtonSubtext_"],
+    [class*="closeButton_"]
+) {
+    display: none;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="layout_"] > [class*="avatar_"],
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="privateChannels_"] [class*="channel_"] [class*="linkButtonIcon_"] {
-    flex: 0 0 auto !important;
-    margin: 0 !important;
-    transform: none !important;
+[data-vc-cdm-state="compact"] [class*="privateChannels_"] [class*="channel_"] [class*="layout_"] > :is(
+    [class*="avatar_"],
+    [class*="linkButtonIcon_"]
+) {
+    flex: 0 0 auto;
+    margin: 0;
+    transform: none;
 }
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="false"] [class*="channelNameFade_"] {
-    -webkit-mask-image: none !important;
-    mask-image: none !important;
+[data-vc-cdm-state="compact"] [class*="channelNameFade_"] {
+    -webkit-mask-image: none;
+    mask-image: none;
 }
 
-/* ------------------------------------------------------------------------- */
-/* Compact account dock                                                      */
-/* ------------------------------------------------------------------------- */
+/* Native account panel */
 
-.vc-cdm-account-dock {
-    position: absolute;
-    z-index: 100000;
-    left: 0;
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) {
+    overflow: visible;
+}
+
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) > [class*="panels_"] {
+    left: var(--vc-cdm-server-rail-width);
+    right: auto;
     bottom: 0;
+    width: var(--vc-cdm-width);
+    height: auto;
+    overflow: visible;
+}
+
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) > [class*="panels_"] > [class*="wrapper_"] {
+    display: none;
+}
+
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) > [class*="panels_"] > [class*="container_"] {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: flex-end;
     gap: 6px;
-    width: 72px;
+    width: var(--vc-cdm-width);
+    min-width: var(--vc-cdm-width);
+    height: auto;
+    min-height: 97px;
     padding: 8px 16px 10px;
+    margin: 0;
     border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, .08));
     background: var(--background-base-lowest, #111214);
     overflow: visible;
-    isolation: isolate;
 }
 
-#app-mount [data-vc-compact-dm-expanded="true"] .vc-cdm-account-dock {
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) > [class*="panels_"] > [class*="container_"] > [class*="container_"][class*="fitInAccount_"],
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="accountPopoutButtonWrapper_"] [class*="nameTag_"] {
     display: none;
 }
 
-.vc-cdm-profile-button,
-.vc-cdm-controls-button,
-.vc-cdm-control-action {
-    display: grid;
-    place-items: center;
-    flex: 0 0 auto;
-    padding: 0;
-    border: 0;
-    color: var(--text-muted, #b5bac1);
-    cursor: pointer;
-}
-
-.vc-cdm-profile-button {
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="accountPopoutButtonWrapper_"] {
     box-sizing: border-box;
+    order: 1;
+    flex: 0 0 auto;
     width: 40px;
+    min-width: 40px;
+    max-width: 40px;
     height: 40px;
-    padding: 2px;
-    border: 2px solid var(--vc-cdm-self-status, #b5bac1);
+    padding: 4px;
+    margin: 0;
+    gap: 0;
     border-radius: 50%;
+    background: transparent;
     overflow: hidden;
-    background: transparent;
 }
 
-.vc-cdm-profile-image {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    object-fit: cover;
-    pointer-events: none;
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="accountPopoutButtonWrapper_"] [class*="avatar_"] {
+    flex: 0 0 auto;
+    margin: 0;
 }
 
-.vc-cdm-controls-button {
+/* The only added account-panel control. Discord renders it with its native Button. */
+.vc-cdm-controls-toggle {
+    order: 2;
+    flex: 0 0 auto;
     width: 40px;
+    min-width: 40px;
+    max-width: 40px;
     height: 32px;
+    padding: 0;
     border-radius: 10px;
-    background: transparent;
     transform: translateY(-3px);
 }
 
-.vc-cdm-controls-button:hover,
-.vc-cdm-control-action:hover {
-    background: var(--background-mod-normal, rgba(255, 255, 255, .10));
-}
-
-.vc-cdm-controls-button:active,
-.vc-cdm-control-action:active {
-    background: var(--background-mod-strong, rgba(255, 255, 255, .14));
-}
-
-.vc-cdm-controls-button svg,
-.vc-cdm-native-control-icon {
+.vc-cdm-controls-toggle svg {
     display: block;
     width: 20px;
     height: 20px;
-    max-width: 20px;
-    max-height: 20px;
-    pointer-events: none;
 }
 
-/* Discord's animated account controls use hard-coded Lottie paint values. */
-.vc-cdm-control-action svg > path,
-.vc-cdm-control-action svg > g path,
-.vc-cdm-control-action svg > g rect {
-    fill: var(--text-muted) !important;
-}
-
-.vc-cdm-control-action svg > g path[stroke]:not([stroke="none"]),
-.vc-cdm-control-action svg > path[stroke]:not([stroke="none"]) {
-    stroke: var(--text-muted) !important;
-}
-
-.vc-cdm-control-action[data-vc-active="true"] svg > path,
-.vc-cdm-control-action[data-vc-active="true"] svg > g path,
-.vc-cdm-control-action[data-vc-active="true"] svg > g rect {
-    fill: var(--status-danger) !important;
-}
-
-.vc-cdm-control-action[data-vc-active="true"] svg > g path[stroke]:not([stroke="none"]),
-.vc-cdm-control-action[data-vc-active="true"] svg > path[stroke]:not([stroke="none"]) {
-    stroke: var(--status-danger) !important;
-}
-
-.vc-cdm-control-action svg [fill="none"] {
-    fill: none !important;
-}
-
-.vc-cdm-control-action svg [stroke="none"] {
-    stroke: none !important;
-}
-
-.vc-cdm-profile-button:focus-visible,
-.vc-cdm-controls-button:focus-visible,
-.vc-cdm-control-action:focus-visible {
-    outline: 2px solid var(--focus-primary, var(--brand-500));
-    outline-offset: 2px;
-}
-
-/* Appended to document.body so Discord/sidebar clipping cannot hide it. */
-.vc-cdm-controls-menu {
-    position: fixed;
-    z-index: 1000001;
+/* Reuse Discord's real mute/deafen/settings buttons as the compact flyout. */
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="container_"] > [class*="buttons_"] {
+    position: absolute;
+    z-index: 1000;
+    left: calc(100% + 8px);
+    bottom: 9px;
     display: flex;
     align-items: center;
     gap: 4px;
+    width: auto;
+    height: auto;
     padding: 5px;
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, .10));
     border-radius: 11px;
@@ -297,26 +233,30 @@
     white-space: nowrap;
 }
 
-.vc-cdm-controls-menu[data-open="true"] {
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="container_"]:has(.vc-cdm-controls-open) > [class*="buttons_"] {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
 }
 
-.vc-cdm-control-action {
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
-    background: transparent;
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="buttons_"] [class*="buttonChevron_"] {
+    display: none;
 }
 
-/* ------------------------------------------------------------------------- */
-/* Default state                                                             */
-/* ------------------------------------------------------------------------- */
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="buttons_"] > [class*="audioButtonParent_"] {
+    width: 34px;
+    height: 34px;
+}
 
-#app-mount [data-vc-compact-dm-bar="true"][data-vc-compact-dm-expanded="true"] {
-    width: auto;
-    min-width: 0;
-    max-width: none;
-    flex-basis: auto;
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="buttons_"] :is(
+    [class*="audioButtonWithMenu_"],
+    [class*="audioButtonParent_"] + button
+),
+[class*="sidebar_"]:has(> [data-vc-cdm-state="compact"]) [class*="buttons_"] > button {
+    width: 34px;
+    min-width: 34px;
+    max-width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 8px;
 }
