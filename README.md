@@ -9,7 +9,7 @@ Personal Vencord user plugins maintained separately from the Vencord source tree
 
 ## Development layout
 
-Plugins live under `plugins/`. The included PowerShell helper links each plugin directory into a sibling Vencord checkout at `Vencord/src/userplugins/` without copying source files.
+Plugins live under `plugins/`. The PowerShell sync helper copies managed plugin directories into a sibling Vencord checkout at `Vencord/src/userplugins/`.
 
 Expected workspace:
 
@@ -19,7 +19,13 @@ vencord-dev/
 └─ vencord-userplugins/
 ```
 
-Run `./scripts/link.ps1` from this repository after cloning both repositories. Build and inject Vencord from the Vencord checkout as usual.
+Run `./scripts/sync.ps1` from this repository after cloning both repositories. The helper only replaces plugin directories that it previously created; it refuses to overwrite unrelated userplugins.
+
+A copy is used instead of a symlink/junction because Vencord's current esbuild path aliases are resolved from source files inside the Vencord tree. After pulling or editing plugin source, rerun the sync helper before rebuilding Vencord.
+
+## Validation
+
+GitHub Actions copies the plugins into the current Vencord `main` source tree and runs a standalone Vencord build. This catches module-resolution and TypeScript/bundling failures before live Discord testing.
 
 ## Status
 

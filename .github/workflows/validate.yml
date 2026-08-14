@@ -1,0 +1,113 @@
+name: Validate userplugins
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout userplugins
+              uses: actions/checkout@v7
+              with:
+                  path: userplugins
+
+            - name: Checkout Vencord
+              uses: actions/checkout@v7
+              with:
+                  repository: Vendicated/Vencord
+                  path: Vencord
+
+            - name: Install pnpm
+              uses: pnpm/action-setup@v6
+              with:
+                  package_json_file: Vencord/package.json
+
+            - name: Use Node.js 24
+              uses: actions/setup-node@v6
+              with:
+                  node-version: 24
+                  cache: pnpm
+                  cache-dependency-path: Vencord/pnpm-lock.yaml
+
+            - name: Sync userplugins into Vencord
+              shell: pwsh
+              run: ./userplugins/scripts/sync.ps1 -VencordPath ./Vencord
+
+            - name: Install Vencord dependencies
+              working-directory: Vencord
+              run: pnpm install --frozen-lockfile
+
+            - name: Build Vencord with userplugins
+              working-directory: Vencord
+              run: pnpm build --standalone
+
+    powershell-sync:
+        runs-on: windows-latest
+
+        steps:
+            - name: Checkout userplugins
+              uses: actions/checkout@v7
+
+            - name: Create mock Vencord checkout
+              shell: pwsh
+              run: |
+                  New-Item -ItemType Directory -Force -Path mock-vencord | Out-Null
+                  Set-Content -Path mock-vencord/package.json -Value '{}'
+
+            - name: Run sync helper
+              shell: pwsh
+              run: ./scripts/sync.ps1 -VencordPath ./mock-vencord
+
+            - name: Verify managed plugin copy
+              shell: pwsh
+              run: |
+                  $IndexTs = Test-Path ./mock-vencord/src/userplugins/compactDMBar/index.ts
+                  $IndexTsx = Test-Path ./mock-vencord/src/userplugins/compactDMBar/index.tsx
+
+                  if (-not ($IndexTs -or $IndexTsx)) {
+                      throw 'compactDMBar entrypoint was not synced'
+                  }
+
+                  if (-not (Test-Path ./mock-vencord/src/userplugins/compactDMBar/.vencord-userplugins-managed)) {
+                      throw 'managed marker was not created'
+                  }
+
+            - name: Verify managed plugin refresh
+              shell: pwsh
+              run: |
+                  Set-Content -Path ./plugins/compactDMBar/.sync-smoke -Value 'updated'
+                  ./scripts/sync.ps1 -VencordPath ./mock-vencord
+
+                  $Synced = Get-Content ./mock-vencord/src/userplugins/compactDMBar/.sync-smoke -Raw
+                  if ($Synced.Trim() -ne 'updated') {
+                      throw 'managed plugin directory was not refreshed from source'
+                  }
+
+            - name: Verify unmanaged plugin refusal
+              shell: pwsh
+              run: |
+                  $Destination = './mock-vencord/src/userplugins/compactDMBar'
+                  Remove-Item -LiteralPath $Destination -Recurse -Force
+                  New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+                  Set-Content -Path "$Destination/unmanaged.txt" -Value 'keep-me'
+
+                  $Refused = $false
+                  try {
+                      ./scripts/sync.ps1 -VencordPath ./mock-vencord
+                  } catch {
+                      $Refused = $true
+                      Write-Host "Expected refusal: $($_.Exception.Message)"
+                  }
+
+                  if (-not $Refused) {
+                      throw 'sync helper overwrote an unmanaged userplugin directory'
+                  }
+
+                  if (-not (Test-Path "$Destination/unmanaged.txt")) {
+                      throw 'sync helper modified the unmanaged directory before refusing'
+                  }
