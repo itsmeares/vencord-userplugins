@@ -49,10 +49,73 @@ interface ActiveSound {
     gain: GainNode;
 }
 
+interface DesktopCaptureSettings {
+    desktopDescription: {
+        id: string;
+        soundshareId?: number | null;
+    };
+    quality: {
+        resolution: number;
+        frameRate: number;
+    };
+}
+
+interface WebRtcMediaEngine {
+    getDesktopSource(constraints: { width: number; height: number; }, audio: boolean): Promise<string>;
+    setGoLiveSource(settings: DesktopCaptureSettings, context: unknown): void;
+}
+
 let mixer: MixerState | null = null;
 let activeSound: ActiveSound | null = null;
 let transmittingSound = false;
 let lastVoiceChannelId: string | undefined;
+let pendingDesktopSourceId: string | undefined;
+
+function getDisplayMedia(constraints: DisplayMediaStreamOptions) {
+    const sourceId = pendingDesktopSourceId;
+    if (!sourceId) return navigator.mediaDevices.getDisplayMedia(constraints);
+
+    const video = constraints.video as MediaTrackConstraints;
+    const source = { chromeMediaSource: "desktop", chromeMediaSourceId: sourceId };
+
+    return navigator.mediaDevices.getUserMedia({
+        audio: constraints.audio ? { mandatory: source } : false,
+        video: {
+            mandatory: {
+                ...source,
+                maxWidth: video.width,
+                maxHeight: video.height,
+                maxFrameRate: video.frameRate
+            }
+        }
+    } as MediaStreamConstraints);
+}
+
+async function setGoLiveSource(engine: WebRtcMediaEngine, settings: DesktopCaptureSettings, context: unknown) {
+    if (navigator.mediaDevices.getDisplayMedia != null || window.DiscordNative?.desktopCapture == null) {
+        engine.setGoLiveSource(settings, context);
+        return;
+    }
+
+    const sourceId = settings.desktopDescription.id;
+    const height = settings.quality.resolution;
+    pendingDesktopSourceId = sourceId;
+
+    try {
+        const id = await engine.getDesktopSource(
+            { width: Math.round(height * 16 / 9), height },
+            settings.desktopDescription.soundshareId != null
+        );
+        engine.setGoLiveSource({
+            ...settings,
+            desktopDescription: { ...settings.desktopDescription, id }
+        }, context);
+    } catch (error) {
+        logger.error("Failed to start desktop capture", error);
+    } finally {
+        if (pendingDesktopSourceId === sourceId) pendingDesktopSourceId = undefined;
+    }
+}
 
 function selectedJoinSound(): JoinSound | undefined {
     const channelId = SelectedChannelStore.getVoiceChannelId();
@@ -292,6 +355,14 @@ export default definePlugin({
             find: '"MediaEngineWebRTC"',
             replacement: [
                 {
+                    match: /(case \i\.\i\.DESKTOP_CAPTURE:return )navigator\.mediaDevices\?\.getDisplayMedia!=null/,
+                    replace: "$1navigator.mediaDevices?.getDisplayMedia!=null||window.DiscordNative?.desktopCapture!=null"
+                },
+                {
+                    match: /navigator\.mediaDevices\.getDisplayMedia\((\i)\)/,
+                    replace: "$self.getDisplayMedia($1)"
+                },
+                {
                     match: /this\.audio\.stream\?\.getAudioTracks\(\)/,
                     replace: "$self.connectMixer(this.audio.stream)?.getAudioTracks()"
                 },
@@ -300,6 +371,13 @@ export default definePlugin({
                     replace: "$&$self.setMicSpeaking(this.input.stream,$1),"
                 }
             ]
+        },
+        {
+            find: "MediaEngineStore go live",
+            replacement: {
+                match: /(\i)\.setGoLiveSource\((\{desktopDescription:\{id:\i\.desktopSource\.id,.+?\},quality:\i\}),(\i)\)/,
+                replace: "$self.setGoLiveSource($1,$2,$3)"
+            }
         },
         {
             find: "CUSTOM_CALL_SOUNDS(",
@@ -325,7 +403,9 @@ export default definePlugin({
     ],
 
     connectMixer,
+    getDisplayMedia,
     setMicSpeaking,
+    setGoLiveSource,
     playEntranceSound,
     playSoundboardSound,
     shouldMixSoundboardSound,
