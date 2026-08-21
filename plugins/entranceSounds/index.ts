@@ -38,6 +38,7 @@ interface MixerState {
     inputStream: MediaStream;
     outputStream: MediaStream;
     input: MediaStreamAudioSourceNode;
+    micGain: GainNode;
     limiter: DynamicsCompressorNode;
     outputTrack: MediaStreamTrack;
     stopOutput: () => void;
@@ -108,6 +109,7 @@ function disposeMixer(state: MixerState) {
     stopEntranceSound();
 
     state.input.disconnect();
+    state.micGain.disconnect();
     state.limiter.disconnect();
     state.stopOutput();
     state.inputStream.getTracks().forEach(track => track.stop());
@@ -122,6 +124,7 @@ function connectMixer(stream?: MediaStream): MediaStream | undefined {
 
     const context = new AudioContext();
     const input = context.createMediaStreamSource(stream);
+    const micGain = context.createGain();
     const limiter = context.createDynamicsCompressor();
     const destination = context.createMediaStreamDestination();
     const outputStream = destination.stream;
@@ -133,8 +136,9 @@ function connectMixer(stream?: MediaStream): MediaStream | undefined {
     limiter.ratio.value = 20;
     limiter.attack.value = 0.003;
     limiter.release.value = 0.25;
+    micGain.gain.value = 0;
 
-    input.connect(limiter).connect(destination);
+    input.connect(micGain).connect(limiter).connect(destination);
 
     const state: MixerState = {
         disposed: false,
@@ -142,6 +146,7 @@ function connectMixer(stream?: MediaStream): MediaStream | undefined {
         inputStream: stream,
         outputStream,
         input,
+        micGain,
         limiter,
         outputTrack,
         stopOutput
@@ -150,6 +155,12 @@ function connectMixer(stream?: MediaStream): MediaStream | undefined {
     outputTrack.stop = () => disposeMixer(state);
     mixer = state;
     return outputStream;
+}
+
+function setMicSpeaking(stream: MediaStream | undefined, speaking: boolean) {
+    if (mixer && stream?.getTracks().includes(mixer.outputTrack)) {
+        mixer.micGain.gain.value = speaking ? 1 : 0;
+    }
 }
 
 async function playMixedSound(sound: SoundboardSound, channelId: string) {
@@ -279,10 +290,16 @@ export default definePlugin({
         },
         {
             find: '"MediaEngineWebRTC"',
-            replacement: {
-                match: /this\.audio\.stream\?\.getAudioTracks\(\)/,
-                replace: "$self.connectMixer(this.audio.stream)?.getAudioTracks()"
-            }
+            replacement: [
+                {
+                    match: /this\.audio\.stream\?\.getAudioTracks\(\)/,
+                    replace: "$self.connectMixer(this.audio.stream)?.getAudioTracks()"
+                },
+                {
+                    match: /handleInputSpeaking=(\i)=>\{/,
+                    replace: "$&$self.setMicSpeaking(this.input.stream,$1),"
+                }
+            ]
         },
         {
             find: "CUSTOM_CALL_SOUNDS(",
@@ -308,6 +325,7 @@ export default definePlugin({
     ],
 
     connectMixer,
+    setMicSpeaking,
     playEntranceSound,
     playSoundboardSound,
     shouldMixSoundboardSound,
