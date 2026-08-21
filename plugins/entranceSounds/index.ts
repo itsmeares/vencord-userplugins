@@ -3,8 +3,7 @@
  */
 
 import { Logger } from "@utils/Logger";
-import definePlugin from "@utils/types";
-import { findStoreLazy } from "@webpack";
+import definePlugin, { PluginNative, ReporterTestable } from "@utils/types";
 import {
     ChannelStore,
     MediaEngineStore,
@@ -14,11 +13,10 @@ import {
     UserStore
 } from "@webpack/common";
 
+const Native = VencordNative.pluginHelpers.EntranceSounds as PluginNative<typeof import("./native")>;
 const logger = new Logger("EntranceSounds");
-const SOUNDBOARD_CDN = "https://cdn.discordapp.com/soundboard-sounds";
-const MAX_SOUND_SECONDS = 20;
-const SPEAKING_VOICE = 1;
-const RTCConnectionStore = findStoreLazy("RTCConnectionStore");
+const SOUNDSHARE_FLAG = 2;
+let playbackGeneration = 0;
 
 interface JoinSound {
     guildId: string;
@@ -35,91 +33,6 @@ interface SoundboardSound {
     volume?: number;
 }
 
-interface MixerState {
-    disposed: boolean;
-    context: AudioContext;
-    inputStream: MediaStream;
-    outputStream: MediaStream;
-    input: MediaStreamAudioSourceNode;
-    limiter: DynamicsCompressorNode;
-    outputTrack: MediaStreamTrack;
-    stopOutput: () => void;
-}
-
-interface ActiveSound {
-    source: AudioBufferSourceNode;
-    gain: GainNode;
-}
-
-interface DesktopCaptureSettings {
-    desktopDescription: {
-        id: string;
-        soundshareId?: number | null;
-    };
-    quality: {
-        resolution: number;
-        frameRate: number;
-    };
-}
-
-interface WebRtcMediaEngine {
-    getDesktopSource(constraints: { width: number; height: number; }, audio: boolean): Promise<string>;
-    setGoLiveSource(settings: DesktopCaptureSettings, context: unknown): void;
-}
-
-let mixer: MixerState | null = null;
-let activeSound: ActiveSound | null = null;
-let transmittingSound = false;
-let micSpeaking = false;
-let lastVoiceChannelId: string | undefined;
-let pendingDesktopSourceId: string | undefined;
-
-function getDisplayMedia(constraints: DisplayMediaStreamOptions) {
-    const sourceId = pendingDesktopSourceId;
-    if (!sourceId) return navigator.mediaDevices.getDisplayMedia(constraints);
-
-    const video = constraints.video as MediaTrackConstraints;
-    const source = { chromeMediaSource: "desktop", chromeMediaSourceId: sourceId };
-
-    return navigator.mediaDevices.getUserMedia({
-        audio: constraints.audio ? { mandatory: source } : false,
-        video: {
-            mandatory: {
-                ...source,
-                maxWidth: video.width,
-                maxHeight: video.height,
-                maxFrameRate: video.frameRate
-            }
-        }
-    } as MediaStreamConstraints);
-}
-
-async function setGoLiveSource(engine: WebRtcMediaEngine, settings: DesktopCaptureSettings, context: unknown) {
-    if (window.DiscordNative?.desktopCapture == null) {
-        engine.setGoLiveSource(settings, context);
-        return;
-    }
-
-    const sourceId = settings.desktopDescription.id;
-    const height = settings.quality.resolution;
-    pendingDesktopSourceId = sourceId;
-
-    try {
-        const id = await engine.getDesktopSource(
-            { width: Math.round(height * 16 / 9), height },
-            settings.desktopDescription.soundshareId != null
-        );
-        engine.setGoLiveSource({
-            ...settings,
-            desktopDescription: { ...settings.desktopDescription, id }
-        }, context);
-    } catch (error) {
-        logger.error("Failed to start desktop capture", error);
-    } finally {
-        if (pendingDesktopSourceId === sourceId) pendingDesktopSourceId = undefined;
-    }
-}
-
 function selectedJoinSound(): JoinSound | undefined {
     const channelId = SelectedChannelStore.getVoiceChannelId();
     const guildId = channelId ? ChannelStore.getChannel(channelId)?.guild_id : undefined;
@@ -132,141 +45,35 @@ function selectedJoinSound(): JoinSound | undefined {
     return guilds?.[guildId]?.joinSound ?? guilds?.["0"]?.joinSound;
 }
 
-function syncSoundTransmission() {
-    if (!mixer || !transmittingSound) return;
+async function playSound(sound: SoundboardSound, channelId: string) {
+    if (SelectedChannelStore.getVoiceChannelId() !== channelId) return;
 
-    if (MediaEngineStore.isSelfDeaf()) stopEntranceSound();
-}
+    const generation = ++playbackGeneration;
+    const playerPid = await Native.getPlayerPid();
+    MediaEngineStore.getMediaEngine().setSoundshareSource(playerPid, true, "default");
 
-function sendSpeaking(speaking: boolean) {
-    const connection = RTCConnectionStore.getRTCConnection();
-    const ssrc = connection?._connection?.audioSSRC;
-    if (ssrc != null) connection.sendSpeaking(speaking ? SPEAKING_VOICE : 0, ssrc);
-}
-
-function setMicSpeaking(speaking: boolean) {
-    micSpeaking = speaking;
-}
-
-function getSpeaking(speaking: number) {
-    return transmittingSound ? SPEAKING_VOICE : speaking;
-}
-
-function beginSoundTransmission() {
-    if (transmittingSound) return;
-    transmittingSound = true;
-    sendSpeaking(true);
-    MediaEngineStore.addChangeListener(syncSoundTransmission);
-    syncSoundTransmission();
-}
-
-function finishSoundTransmission() {
-    if (!transmittingSound) return;
-    transmittingSound = false;
-    sendSpeaking(micSpeaking);
-    MediaEngineStore.removeChangeListener(syncSoundTransmission);
-}
-
-function stopEntranceSound() {
-    const sound = activeSound;
-    activeSound = null;
-
-    if (sound) {
-        sound.source.onended = null;
-        try {
-            sound.source.stop();
-        } catch { }
-        sound.source.disconnect();
-        sound.gain.disconnect();
+    try {
+        const result = await Native.playSound(sound.soundId, sound.volume ?? 1);
+        if (!result.ok) throw new Error(result.error);
+    } finally {
+        if (generation === playbackGeneration) stopSoundshare();
     }
-
-    finishSoundTransmission();
 }
 
-function disposeMixer(state: MixerState) {
-    if (state.disposed) return;
-    state.disposed = true;
-
-    if (mixer === state) mixer = null;
-    stopEntranceSound();
-
-    state.input.disconnect();
-    state.limiter.disconnect();
-    state.stopOutput();
-    state.inputStream.getTracks().forEach(track => track.stop());
-    void state.context.close();
+function stopSoundshare() {
+    const mediaEngine = MediaEngineStore.getMediaEngine();
+    mediaEngine.setSoundshareSource(0, false, "default");
+    mediaEngine.eachConnection(connection => {
+        const native = connection as typeof connection & { localSpeakingFlags?: Record<string, number>; };
+        const flags = native.localSpeakingFlags?.[native.userId] ?? 0;
+        native.handleSpeakingFlags(native.userId, flags & ~SOUNDSHARE_FLAG, native.audioSSRC);
+    }, "default");
 }
 
-function connectMixer(stream?: MediaStream): MediaStream | undefined {
-    if (mixer && mixer.inputStream === stream) return mixer.outputStream;
-    if (!stream) return;
-    if (stream.getAudioTracks().length === 0) return stream;
-    if (mixer) disposeMixer(mixer);
-
-    const context = new AudioContext();
-    const input = context.createMediaStreamSource(stream);
-    const limiter = context.createDynamicsCompressor();
-    const destination = context.createMediaStreamDestination();
-    const outputStream = destination.stream;
-    const outputTrack = destination.stream.getAudioTracks()[0];
-    const stopOutput = outputTrack.stop.bind(outputTrack);
-
-    limiter.threshold.value = -3;
-    limiter.knee.value = 0;
-    limiter.ratio.value = 20;
-    limiter.attack.value = 0.003;
-    limiter.release.value = 0.25;
-    input.connect(limiter).connect(destination);
-
-    const state: MixerState = {
-        disposed: false,
-        context,
-        inputStream: stream,
-        outputStream,
-        input,
-        limiter,
-        outputTrack,
-        stopOutput
-    };
-
-    outputTrack.stop = () => disposeMixer(state);
-    mixer = state;
-    return outputStream;
-}
-
-async function playMixedSound(sound: SoundboardSound, channelId: string) {
-    const response = await fetch(`${SOUNDBOARD_CDN}/${sound.soundId}`);
-    if (!response.ok) throw new Error(`Sound download failed with ${response.status}`);
-
-    const state = mixer;
-    if (!state || SelectedChannelStore.getVoiceChannelId() !== channelId) return;
-
-    const buffer = await state.context.decodeAudioData(await response.arrayBuffer());
-    if (mixer !== state || SelectedChannelStore.getVoiceChannelId() !== channelId) return;
-
-    stopEntranceSound();
-    await state.context.resume();
-
-    const source = state.context.createBufferSource();
-    const gain = state.context.createGain();
-    const volume = Number.isFinite(sound.volume) ? sound.volume! : 1;
-
-    gain.gain.value = Math.max(0, Math.min(1, volume));
-    source.buffer = buffer;
-    source.connect(gain).connect(state.limiter);
-
-    const playing = { source, gain };
-    activeSound = playing;
-    source.onended = () => {
-        if (activeSound !== playing) return;
-        activeSound = null;
-        source.disconnect();
-        gain.disconnect();
-        finishSoundTransmission();
-    };
-
-    beginSoundTransmission();
-    source.start(0, 0, Math.min(buffer.duration, MAX_SOUND_SECONDS));
+function stopSound() {
+    playbackGeneration++;
+    stopSoundshare();
+    void Native.stopSound();
 }
 
 async function playEntranceSound() {
@@ -276,14 +83,14 @@ async function playEntranceSound() {
         if (!channelId || !selection) return;
 
         const sound = SoundboardStore.getSound(selection.guildId, selection.soundId);
-        if (sound?.available) await playMixedSound(sound, channelId);
+        if (sound?.available) await playSound(sound, channelId);
     } catch (error) {
         logger.error("Failed to play entrance sound", error);
-        stopEntranceSound();
+        stopSound();
     }
 }
 
-function shouldMixSoundboardSound(request: SoundboardRequest, channelId: string) {
+function shouldPlaySoundboardSound(request: SoundboardRequest, channelId: string) {
     const channelGuildId = ChannelStore.getChannel(channelId)?.guild_id;
     return UserStore.getCurrentUser()?.premiumType !== 2
         && request.source_guild_id != null
@@ -296,20 +103,11 @@ async function playSoundboardSound(request: SoundboardRequest, channelId: string
         if (!guildId || SelectedChannelStore.getVoiceChannelId() !== channelId) return;
 
         const sound = SoundboardStore.getSound(guildId, request.sound_id);
-        if (sound) await playMixedSound(sound, channelId);
+        if (sound) await playSound(sound, channelId);
     } catch (error) {
         logger.error("Failed to play soundboard sound", error);
-        stopEntranceSound();
+        stopSound();
     }
-}
-
-function onSelectedChannelChange() {
-    const voiceChannelId = SelectedChannelStore.getVoiceChannelId();
-    if (voiceChannelId !== lastVoiceChannelId) {
-        micSpeaking = false;
-        stopEntranceSound();
-    }
-    lastVoiceChannelId = voiceChannelId;
 }
 
 export default definePlugin({
@@ -317,6 +115,7 @@ export default definePlugin({
     description: "Unlocks Discord's native Entrance Sounds picker and plays cross-server sounds through voice.",
     tags: ["Voice", "Fun"],
     authors: [{ name: "itsmeares", id: 0n }],
+    reporterTestable: ReporterTestable.Patches,
 
     patches: [
         {
@@ -349,62 +148,10 @@ export default definePlugin({
             }
         },
         {
-            find: "setupVoiceActivity(",
+            find: "soundshareSentSpeakingEvent",
             replacement: {
-                match: /setupVoiceActivity\((\i)\)\{let\{threshold:(\i)\}=\1;/,
-                replace: "$&$2=$1.autoThreshold?Math.max($2??-40,-40):$2;"
-            }
-        },
-        {
-            find: /\[\i\.\i\.NATIVE,\i\.\i\.WEBRTC\]\.find\(\i=>\i\(\i\)\.supported\(\)\)/,
-            replacement: {
-                match: /\[(\i\.\i)\.NATIVE,\1\.WEBRTC\](?=\.find\()/,
-                replace: "[$1.WEBRTC,$1.NATIVE]"
-            }
-        },
-        {
-            find: '"MediaEngineWebRTC"',
-            replacement: [
-                {
-                    match: /(case \i\.\i\.DESKTOP_CAPTURE:return )navigator\.mediaDevices\?\.getDisplayMedia!=null/,
-                    replace: "$1navigator.mediaDevices?.getDisplayMedia!=null||window.DiscordNative?.desktopCapture!=null"
-                },
-                {
-                    match: /(case \i\.\i\.VIDEO:return )(\i\.\i)/,
-                    replace: "$1$2||window.DiscordNative?.desktopCapture!=null"
-                },
-                {
-                    match: /navigator\.mediaDevices\.getDisplayMedia\((\i)\)/,
-                    replace: "$self.getDisplayMedia($1)"
-                },
-                {
-                    match: /this\.audio\.stream\?\.getAudioTracks\(\)/,
-                    replace: "$self.connectMixer(this.audio.stream)?.getAudioTracks()"
-                },
-                {
-                    match: /handleInputSpeaking=(\i)=>\{/,
-                    replace: "$&$self.setMicSpeaking($1),"
-                }
-            ]
-        },
-        {
-            find: "shouldSendSpeaking(",
-            replacement: [
-                {
-                    match: /(?<=shouldSendSpeaking\(\i,\i\)\{)if\(\(0,\i\.\i\)\(\)\)return!0;/,
-                    replace: "return true;"
-                },
-                {
-                    match: /sendSpeaking\((\i),(\i)\)\{/,
-                    replace: "$&$1=$self.getSpeaking($1);"
-                }
-            ]
-        },
-        {
-            find: "MediaEngineStore go live",
-            replacement: {
-                match: /(\i)\.setGoLiveSource\((\{desktopDescription:\{id:\i\.desktopSource\.id,.+?\},quality:\i\}),(\i)\)/,
-                replace: "$self.setGoLiveSource($1,$2,$3)"
+                match: /(\i\.soundshareId===\i&&\i\.soundshareSentSpeakingEvent)\|\|\i\.context!==\i\.\i\.STREAM/,
+                replace: "$1"
             }
         },
         {
@@ -418,7 +165,7 @@ export default definePlugin({
             find: "SEND_SOUNDBOARD_SOUND(",
             replacement: {
                 match: /(\i\.\i\.post\(\{url:\i\.\i\.SEND_SOUNDBOARD_SOUND\((\i)\),body:(\i),signal:\i\.signal,onRequestProgress:\i,rejectWithError:!0\}\))/,
-                replace: (_, request, channelId, body) => `$self.shouldMixSoundboardSound(${body},${channelId})?$self.playSoundboardSound(${body},${channelId}):${request}`
+                replace: (_, request, channelId, body) => `$self.shouldPlaySoundboardSound(${body},${channelId})?$self.playSoundboardSound(${body},${channelId}):${request}`
             }
         },
         {
@@ -430,23 +177,11 @@ export default definePlugin({
         }
     ],
 
-    connectMixer,
-    getSpeaking,
-    getDisplayMedia,
-    setMicSpeaking,
-    setGoLiveSource,
     playEntranceSound,
     playSoundboardSound,
-    shouldMixSoundboardSound,
-
-    start() {
-        lastVoiceChannelId = SelectedChannelStore.getVoiceChannelId();
-        SelectedChannelStore.addChangeListener(onSelectedChannelChange);
-    },
+    shouldPlaySoundboardSound,
 
     stop() {
-        SelectedChannelStore.removeChangeListener(onSelectedChannelChange);
-        if (mixer) disposeMixer(mixer);
-        lastVoiceChannelId = undefined;
+        stopSound();
     }
 });
