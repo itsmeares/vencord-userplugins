@@ -4,6 +4,7 @@
 
 import { Logger } from "@utils/Logger";
 import definePlugin from "@utils/types";
+import { findStoreLazy } from "@webpack";
 import {
     ChannelStore,
     MediaEngineStore,
@@ -16,6 +17,8 @@ import {
 const logger = new Logger("EntranceSounds");
 const SOUNDBOARD_CDN = "https://cdn.discordapp.com/soundboard-sounds";
 const MAX_SOUND_SECONDS = 20;
+const SPEAKING_VOICE = 1;
+const RTCConnectionStore = findStoreLazy("RTCConnectionStore");
 
 interface JoinSound {
     guildId: string;
@@ -67,6 +70,7 @@ interface WebRtcMediaEngine {
 let mixer: MixerState | null = null;
 let activeSound: ActiveSound | null = null;
 let transmittingSound = false;
+let micSpeaking = false;
 let lastVoiceChannelId: string | undefined;
 let pendingDesktopSourceId: string | undefined;
 
@@ -134,9 +138,24 @@ function syncSoundTransmission() {
     if (MediaEngineStore.isSelfDeaf()) stopEntranceSound();
 }
 
+function sendSpeaking(speaking: boolean) {
+    const connection = RTCConnectionStore.getRTCConnection();
+    const ssrc = connection?._connection?.audioSSRC;
+    if (ssrc != null) connection.sendSpeaking(speaking ? SPEAKING_VOICE : 0, ssrc);
+}
+
+function setMicSpeaking(speaking: boolean) {
+    micSpeaking = speaking;
+}
+
+function getSpeaking(speaking: number) {
+    return transmittingSound ? SPEAKING_VOICE : speaking;
+}
+
 function beginSoundTransmission() {
     if (transmittingSound) return;
     transmittingSound = true;
+    sendSpeaking(true);
     MediaEngineStore.addChangeListener(syncSoundTransmission);
     syncSoundTransmission();
 }
@@ -144,6 +163,7 @@ function beginSoundTransmission() {
 function finishSoundTransmission() {
     if (!transmittingSound) return;
     transmittingSound = false;
+    sendSpeaking(micSpeaking);
     MediaEngineStore.removeChangeListener(syncSoundTransmission);
 }
 
@@ -285,7 +305,10 @@ async function playSoundboardSound(request: SoundboardRequest, channelId: string
 
 function onSelectedChannelChange() {
     const voiceChannelId = SelectedChannelStore.getVoiceChannelId();
-    if (voiceChannelId !== lastVoiceChannelId) stopEntranceSound();
+    if (voiceChannelId !== lastVoiceChannelId) {
+        micSpeaking = false;
+        stopEntranceSound();
+    }
     lastVoiceChannelId = voiceChannelId;
 }
 
@@ -357,15 +380,25 @@ export default definePlugin({
                 {
                     match: /this\.audio\.stream\?\.getAudioTracks\(\)/,
                     replace: "$self.connectMixer(this.audio.stream)?.getAudioTracks()"
+                },
+                {
+                    match: /handleInputSpeaking=(\i)=>\{/,
+                    replace: "$&$self.setMicSpeaking($1),"
                 }
             ]
         },
         {
             find: "shouldSendSpeaking(",
-            replacement: {
-                match: /(?<=shouldSendSpeaking\(\i,\i\)\{)if\(\(0,\i\.\i\)\(\)\)return!0;/,
-                replace: "return true;"
-            }
+            replacement: [
+                {
+                    match: /(?<=shouldSendSpeaking\(\i,\i\)\{)if\(\(0,\i\.\i\)\(\)\)return!0;/,
+                    replace: "return true;"
+                },
+                {
+                    match: /sendSpeaking\((\i),(\i)\)\{/,
+                    replace: "$&$1=$self.getSpeaking($1);"
+                }
+            ]
         },
         {
             find: "MediaEngineStore go live",
@@ -398,7 +431,9 @@ export default definePlugin({
     ],
 
     connectMixer,
+    getSpeaking,
     getDisplayMedia,
+    setMicSpeaking,
     setGoLiveSource,
     playEntranceSound,
     playSoundboardSound,
