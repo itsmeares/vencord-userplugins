@@ -92,7 +92,7 @@ function getDisplayMedia(constraints: DisplayMediaStreamOptions) {
 }
 
 async function setGoLiveSource(engine: WebRtcMediaEngine, settings: DesktopCaptureSettings, context: unknown) {
-    if (navigator.mediaDevices.getDisplayMedia != null || window.DiscordNative?.desktopCapture == null) {
+    if (window.DiscordNative?.desktopCapture == null) {
         engine.setGoLiveSource(settings, context);
         return;
     }
@@ -357,6 +357,10 @@ export default definePlugin({
                 {
                     match: /(case \i\.\i\.DESKTOP_CAPTURE:return )navigator\.mediaDevices\?\.getDisplayMedia!=null/,
                     replace: "$1navigator.mediaDevices?.getDisplayMedia!=null||window.DiscordNative?.desktopCapture!=null"
+                },
+                {
+                    match: /(case \i\.\i\.VIDEO:return )(\i\.\i)/,
+                    replace: "$1$2||window.DiscordNative?.desktopCapture!=null"
                 },
                 {
                     match: /navigator\.mediaDevices\.getDisplayMedia\((\i)\)/,
