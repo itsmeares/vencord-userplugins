@@ -44,10 +44,13 @@ This creates two folders next to each other in your Documents folder.
 
 ```powershell
 Set-Location "$HOME\Documents\vencord-userplugins"
-.\scripts\sync.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync.ps1
 ```
 
-The script only replaces plugin folders that it created itself. It refuses to overwrite an unrelated user plugin with the same name.
+> [!WARNING]
+> PowerShell's execution policy helps prevent untrusted scripts from running. This command bypasses it for this one run. Only continue if you trust this repository and have not replaced or edited `scripts\sync.ps1`.
+
+The script only replaces plugin folders that it created itself and refuses to overwrite an unrelated user plugin with the same name.
 
 ### 4. Build and install Vencord
 
@@ -76,7 +79,7 @@ Close Discord and run the following commands whenever you want the latest plugin
 ```powershell
 Set-Location "$HOME\Documents\vencord-userplugins"
 git pull
-.\scripts\sync.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync.ps1
 
 Set-Location "$HOME\Documents\Vencord"
 git pull
@@ -88,12 +91,6 @@ pnpm.cmd inject
 Open Discord again after the installer finishes.
 
 ## Troubleshooting
-
-If PowerShell refuses to run `sync.ps1`, use this command from the `vencord-userplugins` folder. It changes the policy for this one command only.
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync.ps1
-```
 
 If a plugin does not appear in Vencord settings, rerun the sync, build, and inject steps, then fully restart Discord.
 
