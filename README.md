@@ -1,32 +1,110 @@
-# vencord-userplugins
+# Vencord user plugins
 
-Personal Vencord user plugins maintained separately from the Vencord source tree.
+This repository contains Vencord plugins that are maintained outside the main Vencord project.
+
+These are source plugins. They do not appear in a normal Vencord installation until you build Vencord with them included.
 
 ## Plugins
 
-- **CompactDMBar** — compresses Discord's friends/direct-message sidebar into an icon-first rail while preserving native navigation, avatars, unread state, status indicators, and tooltips where Discord provides them.
-- **EntranceSounds** — unlocks Discord's native global and per-server Entrance Sounds controls, including cross-server selections, and mixes non-Nitro entrance and external Soundboard sounds into the outgoing voice stream.
+- [CompactDMBar](plugins/compactDMBar/README.md) turns the Home and Friends sidebar into a narrow icon rail.
+- [EntranceSounds](plugins/entranceSounds/README.md) unlocks Discord's Entrance Sound controls and lets non-Nitro users send cross-server Soundboard sounds through voice.
 
-## Development layout
+## Install on Windows
 
-Plugins live under `plugins/`. The PowerShell sync helper copies managed plugin directories into a sibling Vencord checkout at `Vencord/src/userplugins/`.
+This guide starts from a normal Discord desktop installation. You do not need programming experience, but you will run a few commands in PowerShell.
 
-Expected workspace:
+### 1. Install the required tools
 
-```text
-vencord-dev/
-├─ Vencord/
-└─ vencord-userplugins/
+Install these first:
+
+- [Git for Windows](https://git-scm.com/downloads/win)
+- [Node.js 22 or newer](https://nodejs.org/en/download)
+
+Open PowerShell and install the package manager used by Vencord:
+
+```powershell
+npm.cmd install --global pnpm@11.9.0
 ```
 
-Run `./scripts/sync.ps1` from this repository after cloning both repositories. The helper only replaces plugin directories that it previously created; it refuses to overwrite unrelated userplugins.
+Close PowerShell and open it again after the installation finishes.
 
-A copy is used instead of a symlink/junction because Vencord's current esbuild path aliases are resolved from source files inside the Vencord tree. After pulling or editing plugin source, rerun the sync helper before rebuilding Vencord.
+### 2. Download Vencord and these plugins
 
-## Validation
+Paste these commands into PowerShell:
 
-GitHub Actions copies the plugins into the current Vencord `main` source tree and runs a standalone Vencord build. This catches module-resolution and TypeScript/bundling failures before live Discord testing.
+```powershell
+Set-Location "$HOME\Documents"
+git clone https://github.com/Vendicated/Vencord.git
+git clone https://github.com/itsmeares/vencord-userplugins.git
+```
 
-## Status
+This creates two folders next to each other in your Documents folder.
 
-This repository targets current Vencord source builds. Discord's internal UI modules change frequently, so UI plugins may need maintenance after Discord updates.
+### 3. Copy the plugins into Vencord
+
+```powershell
+Set-Location "$HOME\Documents\vencord-userplugins"
+.\scripts\sync.ps1
+```
+
+The script only replaces plugin folders that it created itself. It refuses to overwrite an unrelated user plugin with the same name.
+
+### 4. Build and install Vencord
+
+Close Discord, then run:
+
+```powershell
+Set-Location "$HOME\Documents\Vencord"
+pnpm.cmd install --frozen-lockfile
+pnpm.cmd build
+pnpm.cmd inject
+```
+
+The Vencord installer will open. Select your Discord version, such as Stable, PTB, or Canary, and install it. Start Discord when the installer finishes.
+
+### 5. Enable a plugin
+
+1. Open Discord settings.
+2. Open `Vencord`, then `Plugins`.
+3. Search for `CompactDMBar` or `EntranceSounds`.
+4. Enable the plugin and restart Discord if asked.
+
+## Update later
+
+Close Discord and run the following commands whenever you want the latest plugin and Vencord changes:
+
+```powershell
+Set-Location "$HOME\Documents\vencord-userplugins"
+git pull
+.\scripts\sync.ps1
+
+Set-Location "$HOME\Documents\Vencord"
+git pull
+pnpm.cmd install --frozen-lockfile
+pnpm.cmd build
+pnpm.cmd inject
+```
+
+Open Discord again after the installer finishes.
+
+## Troubleshooting
+
+If PowerShell refuses to run `sync.ps1`, use this command from the `vencord-userplugins` folder. It changes the policy for this one command only.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync.ps1
+```
+
+If a plugin does not appear in Vencord settings, rerun the sync, build, and inject steps, then fully restart Discord.
+
+Discord updates can remove a custom Vencord injection. If the plugins disappear after an update, go to the Vencord folder and run `pnpm.cmd inject` again.
+
+For Vencord build problems, check the [official source installation guide](https://docs.vencord.dev/installing/).
+
+## For contributors
+
+Plugins live under `plugins/`. The sync helper copies them into `Vencord/src/userplugins/` because Vencord resolves build paths from inside its own source tree.
+
+GitHub Actions syncs the plugins into the current Vencord `main` branch and runs a standalone build. Discord changes its internal modules often, so a plugin may need an update after Discord changes.
+
+Vencord and user plugins are client modifications. They are not endorsed by Discord, and using client modifications is against Discord's Terms of Service. These user plugins are also not reviewed by the Vencord team.

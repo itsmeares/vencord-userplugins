@@ -2,6 +2,10 @@
 
 Compacts Discord's Home/Friends direct-message sidebar into a server-list-style rail while leaving guild channel sidebars alone.
 
+[Install the plugins first](../../README.md#install-on-windows), then enable `CompactDMBar` in Discord under `Vencord` > `Plugins`.
+
+Open Home or Friends after enabling it. Double-click the sidebar resize handle to switch between compact and normal mode. You can also drag the handle left or right.
+
 ## Behaviour
 
 - compact width is 72 px, with 40 px DM avatars centered inside compact rows;
