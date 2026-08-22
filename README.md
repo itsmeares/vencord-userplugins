@@ -5,7 +5,7 @@ Personal Vencord user plugins maintained separately from the Vencord source tree
 ## Plugins
 
 - **CompactDMBar** — compresses Discord's friends/direct-message sidebar into an icon-first rail while preserving native navigation, avatars, unread state, status indicators, and tooltips where Discord provides them.
-- **SoundboardPlus** — planned Soundboard and Entrance Sound tooling. Implementation will follow after native soundboard playback is proven against the current Discord/Vencord client.
+- **EntranceSounds** — unlocks Discord's native global and per-server Entrance Sounds controls, including cross-server selections, and mixes non-Nitro entrance and external Soundboard sounds into the outgoing voice stream.
 
 ## Development layout
 
