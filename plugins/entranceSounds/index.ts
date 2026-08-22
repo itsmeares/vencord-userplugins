@@ -3,9 +3,11 @@
  */
 
 import { Logger } from "@utils/Logger";
-import definePlugin, { PluginNative, ReporterTestable } from "@utils/types";
+import definePlugin, { ReporterTestable } from "@utils/types";
+import { findByCodeLazy, findStoreLazy } from "@webpack";
 import {
     ChannelStore,
+    FluxDispatcher,
     MediaEngineStore,
     SelectedChannelStore,
     SoundboardStore,
@@ -13,10 +15,15 @@ import {
     UserStore
 } from "@webpack/common";
 
-const Native = VencordNative.pluginHelpers.EntranceSounds as PluginNative<typeof import("./native")>;
 const logger = new Logger("EntranceSounds");
-const SOUNDSHARE_FLAG = 2;
-let playbackGeneration = 0;
+const SOUNDBOARD_CDN = "https://cdn.discordapp.com/soundboard-sounds";
+const MAX_SOUND_SECONDS = 20;
+const SPEAKING_VOICE = 1;
+const RTCConnectionStore = findStoreLazy("RTCConnectionStore");
+const getSoundboardVolume = findByCodeLazy(".getSetting()?.volume??100", ".getOutputVolume()/100") as (volume: number) => number;
+
+type MediaEngine = ReturnType<typeof MediaEngineStore.getMediaEngine>;
+type MediaEngineClassFactory = (type: string) => new () => MediaEngine;
 
 interface JoinSound {
     guildId: string;
@@ -33,6 +40,80 @@ interface SoundboardSound {
     volume?: number;
 }
 
+interface MixerState {
+    disposed: boolean;
+    context: AudioContext;
+    inputStream: MediaStream;
+    outputStream: MediaStream;
+    input: MediaStreamAudioSourceNode;
+    limiter: DynamicsCompressorNode;
+    outputTrack: MediaStreamTrack;
+    stopOutput: () => void;
+}
+
+interface ActiveSound {
+    source: AudioBufferSourceNode;
+    gain: GainNode;
+}
+
+interface LocalSample {
+    stop(): void;
+}
+
+let mediaEngineClassFactory: MediaEngineClassFactory | undefined;
+let webRtcEngine: MediaEngine | undefined;
+let mixer: MixerState | null = null;
+let activeSound: ActiveSound | null = null;
+const localSamples = new Map<string, LocalSample>();
+let transmittingSound = false;
+let micSpeaking = false;
+let lastVoiceChannelId: string | undefined;
+
+function captureMediaEngineFactory(factory: MediaEngineClassFactory) {
+    if (mediaEngineClassFactory) return;
+    mediaEngineClassFactory = factory;
+    if (IS_REPORTER) return;
+
+    try {
+        webRtcEngine = new (factory("WEBRTC"))();
+        void webRtcEngine.fetchAsyncResources({ fetchDave: true })
+            .then(() => webRtcEngine?.enable())
+            .catch(error => logger.error("Failed to initialize the audio-only WebRTC engine", error));
+    } catch (error) {
+        logger.error("Failed to create the audio-only WebRTC engine", error);
+    }
+}
+
+function getConnectionMediaEngine(context: string, nativeEngine: MediaEngine): MediaEngine {
+    const voiceEngine = webRtcEngine;
+    if (context !== "default" || !voiceEngine) return nativeEngine;
+
+    return {
+        connect: (...args: Parameters<MediaEngine["connect"]>) => {
+            const connection = voiceEngine.connect(...args);
+            const modeOptions = MediaEngineStore.getModeOptions();
+            connection.setInputMode(MediaEngineStore.getMode(), {
+                pttReleaseDelay: modeOptions.delay,
+                vadThreshold: modeOptions.threshold
+            });
+            Object.assign(connection, {
+                startSamplesLocalPlayback: playLocalSample,
+                stopSamplesLocalPlayback: stopLocalSample,
+                stopAllSamplesLocalPlayback: stopAllLocalSamples
+            });
+            nativeEngine.connections.add(connection);
+            const eventConnection = connection as typeof connection & {
+                on(event: "speaking", listener: (userId: string, speakingFlags: number) => void): void;
+                once(event: "destroy", listener: () => void): void;
+            };
+            eventConnection.on("speaking", (userId, speakingFlags) => setSpeaking(context, userId, speakingFlags));
+            eventConnection.once("destroy", () => nativeEngine.connections.delete(connection));
+            return connection;
+        },
+        supports: voiceEngine.supports.bind(voiceEngine)
+    } as MediaEngine;
+}
+
 function selectedJoinSound(): JoinSound | undefined {
     const channelId = SelectedChannelStore.getVoiceChannelId();
     const guildId = channelId ? ChannelStore.getChannel(channelId)?.guild_id : undefined;
@@ -45,35 +126,190 @@ function selectedJoinSound(): JoinSound | undefined {
     return guilds?.[guildId]?.joinSound ?? guilds?.["0"]?.joinSound;
 }
 
-async function playSound(sound: SoundboardSound, channelId: string) {
-    if (SelectedChannelStore.getVoiceChannelId() !== channelId) return;
+function syncSoundTransmission() {
+    if (!mixer || !transmittingSound) return;
+    if (MediaEngineStore.isSelfDeaf()) stopEntranceSound();
+}
 
-    const generation = ++playbackGeneration;
-    const playerPid = await Native.getPlayerPid();
-    MediaEngineStore.getMediaEngine().setSoundshareSource(playerPid, true, "default");
+function sendSpeaking(speaking: boolean) {
+    const connection = RTCConnectionStore.getRTCConnection();
+    const ssrc = connection?._connection?.audioSSRC;
+    if (ssrc != null) connection.sendSpeaking(speaking ? SPEAKING_VOICE : 0, ssrc);
+}
 
-    try {
-        const result = await Native.playSound(sound.soundId, sound.volume ?? 1);
-        if (!result.ok) throw new Error(result.error);
-    } finally {
-        if (generation === playbackGeneration) stopSoundshare();
+function setSpeaking(context: string, userId: string, speakingFlags: number) {
+    if (context !== "default") return;
+    FluxDispatcher.dispatch({ type: "SPEAKING", context, userId, speakingFlags });
+}
+
+function setMicSpeaking(speaking: boolean) {
+    micSpeaking = speaking;
+}
+
+function getSpeaking(speaking: number) {
+    return transmittingSound ? SPEAKING_VOICE : speaking;
+}
+
+function beginSoundTransmission() {
+    if (transmittingSound) return;
+    transmittingSound = true;
+    sendSpeaking(true);
+    MediaEngineStore.addChangeListener(syncSoundTransmission);
+    syncSoundTransmission();
+}
+
+function finishSoundTransmission() {
+    if (!transmittingSound) return;
+    transmittingSound = false;
+    sendSpeaking(micSpeaking);
+    MediaEngineStore.removeChangeListener(syncSoundTransmission);
+}
+
+function stopEntranceSound() {
+    const sound = activeSound;
+    activeSound = null;
+
+    if (sound) {
+        sound.source.onended = null;
+        try {
+            sound.source.stop();
+        } catch { }
+        sound.source.disconnect();
+        sound.gain.disconnect();
     }
+
+    finishSoundTransmission();
 }
 
-function stopSoundshare() {
-    const mediaEngine = MediaEngineStore.getMediaEngine();
-    mediaEngine.setSoundshareSource(0, false, "default");
-    mediaEngine.eachConnection(connection => {
-        const native = connection as typeof connection & { localSpeakingFlags?: Record<string, number>; };
-        const flags = native.localSpeakingFlags?.[native.userId] ?? 0;
-        native.handleSpeakingFlags(native.userId, flags & ~SOUNDSHARE_FLAG, native.audioSSRC);
-    }, "default");
+function disposeMixer(state: MixerState) {
+    if (state.disposed) return;
+    state.disposed = true;
+
+    if (mixer === state) mixer = null;
+    stopEntranceSound();
+    stopAllLocalSamples();
+
+    state.input.disconnect();
+    state.limiter.disconnect();
+    state.stopOutput();
+    state.inputStream.getTracks().forEach(track => track.stop());
+    void state.context.close();
 }
 
-function stopSound() {
-    playbackGeneration++;
-    stopSoundshare();
-    void Native.stopSound();
+function playLocalSample(soundKey: string, buffer: AudioBuffer, volume: number, callback: (status: number, message?: string) => void) {
+    stopLocalSample(soundKey);
+
+    const state = mixer;
+    if (!state) {
+        callback(1, "Voice mixer unavailable");
+        return;
+    }
+
+    const source = state.context.createBufferSource();
+    const gain = state.context.createGain();
+    let finished = false;
+
+    const finish = (stop: boolean) => {
+        if (finished) return;
+        finished = true;
+        localSamples.delete(soundKey);
+        source.onended = null;
+        if (stop) {
+            try {
+                source.stop();
+            } catch { }
+        }
+        source.disconnect();
+        gain.disconnect();
+        callback(0);
+    };
+
+    gain.gain.value = volume;
+    source.buffer = buffer;
+    source.connect(gain).connect(state.context.destination);
+    source.onended = () => finish(false);
+    localSamples.set(soundKey, { stop: () => finish(true) });
+    source.start(0, 0, Math.min(buffer.duration, MAX_SOUND_SECONDS));
+}
+
+function stopLocalSample(soundKey: string) {
+    localSamples.get(soundKey)?.stop();
+}
+
+function stopAllLocalSamples() {
+    [...localSamples.values()].forEach(sample => sample.stop());
+}
+
+function connectMixer(stream?: MediaStream): MediaStream | undefined {
+    if (mixer && mixer.inputStream === stream) return mixer.outputStream;
+    if (!stream) return;
+    if (stream.getAudioTracks().length === 0) return stream;
+    if (mixer) disposeMixer(mixer);
+
+    const context = new AudioContext();
+    const input = context.createMediaStreamSource(stream);
+    const limiter = context.createDynamicsCompressor();
+    const destination = context.createMediaStreamDestination();
+    const outputStream = destination.stream;
+    const outputTrack = destination.stream.getAudioTracks()[0];
+    const stopOutput = outputTrack.stop.bind(outputTrack);
+
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.25;
+    input.connect(limiter).connect(destination);
+
+    const state: MixerState = {
+        disposed: false,
+        context,
+        inputStream: stream,
+        outputStream,
+        input,
+        limiter,
+        outputTrack,
+        stopOutput
+    };
+
+    outputTrack.stop = () => disposeMixer(state);
+    mixer = state;
+    return outputStream;
+}
+
+async function playMixedSound(sound: SoundboardSound, channelId: string) {
+    const response = await fetch(`${SOUNDBOARD_CDN}/${sound.soundId}`);
+    if (!response.ok) throw new Error(`Sound download failed with ${response.status}`);
+
+    const state = mixer;
+    if (!state || SelectedChannelStore.getVoiceChannelId() !== channelId) return;
+
+    const buffer = await state.context.decodeAudioData(await response.arrayBuffer());
+    if (mixer !== state || SelectedChannelStore.getVoiceChannelId() !== channelId) return;
+
+    stopEntranceSound();
+    await state.context.resume();
+
+    const source = state.context.createBufferSource();
+    const gain = state.context.createGain();
+    const volume = Number.isFinite(sound.volume) ? sound.volume! : 1;
+
+    gain.gain.value = getSoundboardVolume(Math.max(0, Math.min(1, volume)));
+    source.buffer = buffer;
+    source.connect(gain).connect(state.limiter);
+
+    const playing = { source, gain };
+    activeSound = playing;
+    source.onended = () => {
+        if (activeSound !== playing) return;
+        activeSound = null;
+        source.disconnect();
+        gain.disconnect();
+        finishSoundTransmission();
+    };
+
+    beginSoundTransmission();
+    source.start(0, 0, Math.min(buffer.duration, MAX_SOUND_SECONDS));
 }
 
 async function playEntranceSound() {
@@ -83,14 +319,14 @@ async function playEntranceSound() {
         if (!channelId || !selection) return;
 
         const sound = SoundboardStore.getSound(selection.guildId, selection.soundId);
-        if (sound?.available) await playSound(sound, channelId);
+        if (sound?.available) await playMixedSound(sound, channelId);
     } catch (error) {
         logger.error("Failed to play entrance sound", error);
-        stopSound();
+        stopEntranceSound();
     }
 }
 
-function shouldPlaySoundboardSound(request: SoundboardRequest, channelId: string) {
+function shouldMixSoundboardSound(request: SoundboardRequest, channelId: string) {
     const channelGuildId = ChannelStore.getChannel(channelId)?.guild_id;
     return UserStore.getCurrentUser()?.premiumType !== 2
         && request.source_guild_id != null
@@ -103,11 +339,20 @@ async function playSoundboardSound(request: SoundboardRequest, channelId: string
         if (!guildId || SelectedChannelStore.getVoiceChannelId() !== channelId) return;
 
         const sound = SoundboardStore.getSound(guildId, request.sound_id);
-        if (sound) await playSound(sound, channelId);
+        if (sound) await playMixedSound(sound, channelId);
     } catch (error) {
         logger.error("Failed to play soundboard sound", error);
-        stopSound();
+        stopEntranceSound();
     }
+}
+
+function onSelectedChannelChange() {
+    const voiceChannelId = SelectedChannelStore.getVoiceChannelId();
+    if (voiceChannelId !== lastVoiceChannelId) {
+        micSpeaking = false;
+        stopEntranceSound();
+    }
+    lastVoiceChannelId = voiceChannelId;
 }
 
 export default definePlugin({
@@ -136,7 +381,6 @@ export default definePlugin({
             replacement: {
                 match: /(?<=type:"(?:SOUNDBOARD_SOUNDS_RECEIVED|GUILD_SOUNDBOARD_SOUND_CREATE|GUILD_SOUNDBOARD_SOUND_UPDATE|GUILD_SOUNDBOARD_SOUNDS_UPDATE)".+?available:)\i\.available/g,
                 replace: "true",
-                // FakeNitro applies the same patch when it is enabled.
                 noWarn: true
             }
         },
@@ -148,10 +392,58 @@ export default definePlugin({
             }
         },
         {
-            find: "soundshareSentSpeakingEvent",
+            find: "setupVoiceActivity(",
             replacement: {
-                match: /(\i\.soundshareId===\i&&\i\.soundshareSentSpeakingEvent)\|\|\i\.context!==\i\.\i\.STREAM/,
-                replace: "$1"
+                match: /setupVoiceActivity\((\i)\)\{let\{threshold:(\i)\}=\1;/,
+                replace: "$&$2=$1.autoThreshold?Math.max($2??-40,-40):$2;"
+            }
+        },
+        {
+            find: /\[\i\.\i\.NATIVE,\i\.\i\.WEBRTC\]\.find\(\i=>\i\(\i\)\.supported\(\)\)/,
+            replacement: {
+                match: /return new\((\i)\((\i)\)\)(?:\(\))?/,
+                replace: "return $self.captureMediaEngineFactory($1),new($1($2))"
+            }
+        },
+        {
+            find: '"MediaEngineWebRTC"',
+            replacement: [
+                {
+                    match: /this\.videoSupported=\i\.\i;/,
+                    replace: "this.videoSupported=true;"
+                },
+                {
+                    match: /case (\i\.\i)\.VIDEO:return \i\.\i;/,
+                    replace: "case $1.VIDEO:return true;"
+                },
+                {
+                    match: /this\.audio\.stream\?\.getAudioTracks\(\)/,
+                    replace: "$self.connectMixer(this.audio.stream)?.getAudioTracks()"
+                },
+                {
+                    match: /handleInputSpeaking=(\i)=>\{/,
+                    replace: "$&$self.setMicSpeaking($1),"
+                }
+            ]
+        },
+        {
+            find: "shouldSendSpeaking(",
+            replacement: [
+                {
+                    match: /(?<=shouldSendSpeaking\(\i,\i\)\{)if\(\(0,\i\.\i\)\(\)\)return!0;/,
+                    replace: "return true;"
+                },
+                {
+                    match: /sendSpeaking\((\i),(\i)\)\{/,
+                    replace: "$&$1=$self.getSpeaking($1);"
+                }
+            ]
+        },
+        {
+            find: "_connectMediaEngineWithEndpoint",
+            replacement: {
+                match: /(\i)=(\i\.\i\.getMediaEngine\(\)),(\i=\i\.\i\.getPersistentCodesEnabled\(\))/,
+                replace: "$1=$self.getConnectionMediaEngine(this.context,$2),$3"
             }
         },
         {
@@ -165,7 +457,7 @@ export default definePlugin({
             find: "SEND_SOUNDBOARD_SOUND(",
             replacement: {
                 match: /(\i\.\i\.post\(\{url:\i\.\i\.SEND_SOUNDBOARD_SOUND\((\i)\),body:(\i),signal:\i\.signal,onRequestProgress:\i,rejectWithError:!0\}\))/,
-                replace: (_, request, channelId, body) => `$self.shouldPlaySoundboardSound(${body},${channelId})?$self.playSoundboardSound(${body},${channelId}):${request}`
+                replace: (_, request, channelId, body) => `$self.shouldMixSoundboardSound(${body},${channelId})?$self.playSoundboardSound(${body},${channelId}):${request}`
             }
         },
         {
@@ -177,11 +469,23 @@ export default definePlugin({
         }
     ],
 
+    captureMediaEngineFactory,
+    getConnectionMediaEngine,
+    connectMixer,
+    getSpeaking,
+    setMicSpeaking,
     playEntranceSound,
     playSoundboardSound,
-    shouldPlaySoundboardSound,
+    shouldMixSoundboardSound,
+
+    start() {
+        lastVoiceChannelId = SelectedChannelStore.getVoiceChannelId();
+        SelectedChannelStore.addChangeListener(onSelectedChannelChange);
+    },
 
     stop() {
-        stopSound();
+        SelectedChannelStore.removeChangeListener(onSelectedChannelChange);
+        if (mixer) disposeMixer(mixer);
+        lastVoiceChannelId = undefined;
     }
 });
