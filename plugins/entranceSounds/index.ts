@@ -7,7 +7,6 @@ import definePlugin, { ReporterTestable } from "@utils/types";
 import { findByCodeLazy, findStoreLazy } from "@webpack";
 import {
     ChannelStore,
-    FluxDispatcher,
     MediaEngineStore,
     SelectedChannelStore,
     SoundboardStore,
@@ -18,6 +17,7 @@ import {
 const logger = new Logger("EntranceSounds");
 const SOUNDBOARD_CDN = "https://cdn.discordapp.com/soundboard-sounds";
 const MAX_SOUND_SECONDS = 20;
+const VOICE_CONNECTION_TIMEOUT_MS = 15_000;
 const SPEAKING_VOICE = 1;
 const RTCConnectionStore = findStoreLazy("RTCConnectionStore");
 const getSoundboardVolume = findByCodeLazy(".getSetting()?.volume??100", ".getOutputVolume()/100") as (volume: number) => number;
@@ -101,17 +101,22 @@ function getConnectionMediaEngine(context: string, nativeEngine: MediaEngine): M
                 stopSamplesLocalPlayback: stopLocalSample,
                 stopAllSamplesLocalPlayback: stopAllLocalSamples
             });
-            nativeEngine.connections.add(connection);
             const eventConnection = connection as typeof connection & {
-                on(event: "speaking", listener: (userId: string, speakingFlags: number) => void): void;
                 once(event: "destroy", listener: () => void): void;
             };
-            eventConnection.on("speaking", (userId, speakingFlags) => setSpeaking(context, userId, speakingFlags));
             eventConnection.once("destroy", () => nativeEngine.connections.delete(connection));
+            nativeEngine.connections.add(connection);
+            (nativeEngine as MediaEngine & {
+                emit(event: "Connection", connection: ReturnType<MediaEngine["connect"]>): void;
+            }).emit("Connection", connection);
             return connection;
         },
         supports: voiceEngine.supports.bind(voiceEngine)
     } as MediaEngine;
+}
+
+function shouldHandleControlPing(context: string) {
+    return context === "default" && webRtcEngine != null;
 }
 
 function selectedJoinSound(): JoinSound | undefined {
@@ -126,6 +131,30 @@ function selectedJoinSound(): JoinSound | undefined {
     return guilds?.[guildId]?.joinSound ?? guilds?.["0"]?.joinSound;
 }
 
+function waitForVoiceConnection(channelId: string) {
+    if (RTCConnectionStore.isConnected() && RTCConnectionStore.getChannelId() === channelId) {
+        return Promise.resolve(true);
+    }
+
+    return new Promise<boolean>(resolve => {
+        const finish = (connected: boolean) => {
+            clearTimeout(timeout);
+            RTCConnectionStore.removeChangeListener(onChange);
+            SelectedChannelStore.removeChangeListener(onChange);
+            resolve(connected);
+        };
+        const onChange = () => {
+            if (SelectedChannelStore.getVoiceChannelId() !== channelId) finish(false);
+            else if (RTCConnectionStore.isConnected() && RTCConnectionStore.getChannelId() === channelId) finish(true);
+        };
+        const timeout = setTimeout(() => finish(false), VOICE_CONNECTION_TIMEOUT_MS);
+
+        RTCConnectionStore.addChangeListener(onChange);
+        SelectedChannelStore.addChangeListener(onChange);
+        onChange();
+    });
+}
+
 function syncSoundTransmission() {
     if (!mixer || !transmittingSound) return;
     if (MediaEngineStore.isSelfDeaf()) stopEntranceSound();
@@ -135,11 +164,6 @@ function sendSpeaking(speaking: boolean) {
     const connection = RTCConnectionStore.getRTCConnection();
     const ssrc = connection?._connection?.audioSSRC;
     if (ssrc != null) connection.sendSpeaking(speaking ? SPEAKING_VOICE : 0, ssrc);
-}
-
-function setSpeaking(context: string, userId: string, speakingFlags: number) {
-    if (context !== "default") return;
-    FluxDispatcher.dispatch({ type: "SPEAKING", context, userId, speakingFlags });
 }
 
 function setMicSpeaking(speaking: boolean) {
@@ -255,10 +279,10 @@ function connectMixer(stream?: MediaStream): MediaStream | undefined {
     const stopOutput = outputTrack.stop.bind(outputTrack);
 
     limiter.threshold.value = -3;
-    limiter.knee.value = 0;
-    limiter.ratio.value = 20;
+    limiter.knee.value = 6;
+    limiter.ratio.value = 4;
     limiter.attack.value = 0.003;
-    limiter.release.value = 0.25;
+    limiter.release.value = 0.1;
     input.connect(limiter).connect(destination);
 
     const state: MixerState = {
@@ -285,6 +309,8 @@ async function playMixedSound(sound: SoundboardSound, channelId: string) {
     if (!state || SelectedChannelStore.getVoiceChannelId() !== channelId) return;
 
     const buffer = await state.context.decodeAudioData(await response.arrayBuffer());
+    if (mixer !== state || SelectedChannelStore.getVoiceChannelId() !== channelId) return;
+    if (!await waitForVoiceConnection(channelId)) return;
     if (mixer !== state || SelectedChannelStore.getVoiceChannelId() !== channelId) return;
 
     stopEntranceSound();
@@ -440,6 +466,13 @@ export default definePlugin({
             ]
         },
         {
+            find: "_handleControlPing(",
+            replacement: {
+                match: /_handleControlPing\((\i)\)\{/,
+                replace: "$&if($self.shouldHandleControlPing(this.context))return this._handlePing($1);"
+            }
+        },
+        {
             find: "_connectMediaEngineWithEndpoint",
             replacement: {
                 match: /(\i)=(\i\.\i\.getMediaEngine\(\)),(\i=\i\.\i\.getPersistentCodesEnabled\(\))/,
@@ -471,6 +504,7 @@ export default definePlugin({
 
     captureMediaEngineFactory,
     getConnectionMediaEngine,
+    shouldHandleControlPing,
     connectMixer,
     getSpeaking,
     setMicSpeaking,
