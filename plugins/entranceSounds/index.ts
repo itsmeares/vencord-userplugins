@@ -115,6 +115,10 @@ function getConnectionMediaEngine(context: string, nativeEngine: MediaEngine): M
     } as MediaEngine;
 }
 
+function shouldHandleControlPing(context: string) {
+    return context === "default" && webRtcEngine != null;
+}
+
 function selectedJoinSound(): JoinSound | undefined {
     const channelId = SelectedChannelStore.getVoiceChannelId();
     const guildId = channelId ? ChannelStore.getChannel(channelId)?.guild_id : undefined;
@@ -462,6 +466,13 @@ export default definePlugin({
             ]
         },
         {
+            find: "_handleControlPing(",
+            replacement: {
+                match: /_handleControlPing\((\i)\)\{/,
+                replace: "$&if($self.shouldHandleControlPing(this.context))return this._handlePing($1);"
+            }
+        },
+        {
             find: "_connectMediaEngineWithEndpoint",
             replacement: {
                 match: /(\i)=(\i\.\i\.getMediaEngine\(\)),(\i=\i\.\i\.getPersistentCodesEnabled\(\))/,
@@ -493,6 +504,7 @@ export default definePlugin({
 
     captureMediaEngineFactory,
     getConnectionMediaEngine,
+    shouldHandleControlPing,
     connectMixer,
     getSpeaking,
     setMicSpeaking,
