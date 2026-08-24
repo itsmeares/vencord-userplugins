@@ -7,6 +7,7 @@ import definePlugin, { ReporterTestable } from "@utils/types";
 import { findByCodeLazy, findStoreLazy } from "@webpack";
 import {
     ChannelStore,
+    FluxDispatcher,
     MediaEngineStore,
     SelectedChannelStore,
     SoundboardStore,
@@ -102,8 +103,12 @@ function getConnectionMediaEngine(context: string, nativeEngine: MediaEngine): M
                 stopAllSamplesLocalPlayback: stopAllLocalSamples
             });
             const eventConnection = connection as typeof connection & {
+                on(event: "speaking", listener: (userId: string, speakingFlags: number) => void): void;
                 once(event: "destroy", listener: () => void): void;
             };
+            eventConnection.on("speaking", (userId, speakingFlags) => {
+                FluxDispatcher.dispatch({ type: "SPEAKING", context, userId, speakingFlags });
+            });
             eventConnection.once("destroy", () => nativeEngine.connections.delete(connection));
             nativeEngine.connections.add(connection);
             (nativeEngine as MediaEngine & {
