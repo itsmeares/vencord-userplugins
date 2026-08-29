@@ -94,7 +94,7 @@ Open Discord again after the installer finishes.
 
 If a plugin does not appear in Vencord settings, rerun the sync, build, and inject steps, then fully restart Discord.
 
-Discord updates can remove a custom Vencord injection. If the plugins disappear after an update, go to the Vencord folder and run `pnpm.cmd inject` again.
+If the plugins disappear after a Discord or Vencord update, their source files are probably still safe. Rerun every command under [Update later](#update-later) to sync, rebuild, and inject the custom Vencord build, then restart Discord. Running only `pnpm.cmd inject` is not enough if Vencord replaced the compiled custom build.
 
 For Vencord build problems, check the [official source installation guide](https://docs.vencord.dev/installing/).
 
